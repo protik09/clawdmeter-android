@@ -5,16 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Clawdmeter</title>
 <style>
-@font-face{font-family:Styrene;src:url(fonts/StyreneB-Regular.otf)}
-@font-face{font-family:Tiempos;src:url(fonts/TiemposText-400-Regular.otf)}
 @font-face{font-family:Mono;src:url(fonts/DejaVuSansMono.ttf)}
 :root{--bg:#000;--panel:#1f1f1e;--text:#faf9f5;--dim:#b0aea5;--accent:#d97757;--green:#788c5d;--amber:#d97757;
   --red:#c0392b;--track:#2a2a28;--clawd:#d97757;--eye:#141413;--u:min(1vw,.55vh)}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:Styrene,system-ui,sans-serif;overflow:hidden}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;overflow:hidden}
 #app{height:100%;display:flex;flex-direction:column;gap:calc(3*var(--u));padding:calc(3*var(--u)) calc(4*var(--u))}
 header{display:flex;align-items:center;justify-content:center;position:relative}
-#clock{font-family:Tiempos,Georgia,serif;font-size:calc(17*var(--u));line-height:1.1}
+#clock{font-family:Georgia,serif;font-size:calc(17*var(--u));line-height:1.1}
 #dot{position:absolute;right:calc(2*var(--u));width:calc(2.6*var(--u));height:calc(2.6*var(--u));border-radius:50%;background:#444;transition:background .4s}
 #dot.on{background:var(--green)}
 #cards{display:flex;flex-direction:column;gap:calc(3*var(--u));transition:opacity .6s}
@@ -32,7 +30,7 @@ header{display:flex;align-items:center;justify-content:center;position:relative}
 #cv{position:absolute;inset:0;width:100%;height:100%}
 #who{position:absolute;left:0;right:0;top:calc(4*var(--u));text-align:center;pointer-events:none;padding:0 calc(3*var(--u))}
 #who .dev{font-size:calc(5.4*var(--u));color:var(--dim);letter-spacing:.03em}
-#who .proj{font-family:Tiempos,Georgia,serif;font-size:calc(8*var(--u));line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#who .proj{font-family:Georgia,serif;font-size:calc(8*var(--u));line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #who.multi .proj{font-size:calc(6.5*var(--u));margin-bottom:calc(2*var(--u))}
 #who .proj.idle{color:var(--dim)}
 footer{font-family:Mono,monospace;color:var(--accent);font-size:calc(6.6*var(--u));text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.3em}
