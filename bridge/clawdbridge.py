@@ -48,6 +48,7 @@ CLAUDE_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR") or HOME / ".claude").expan
 ASSETS = Path(__file__).resolve().parent.parent / "android/app/src/main/assets"  # UI preview (repo only)
 HOST = os.environ.get("CLAWDBRIDGE_NAME") or socket.gethostname().split(".")[0]
 PORT = 8787
+VERSION = "dev"  # release CI stamps the git tag here, so it matches the APK's versionName
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 ALERT_TEXT = {"question": "Question for you", "idle": "Waiting for you!", "elicitation": "MCP request!"}
 ALERT_TTL, ATTENTION_MAX_AGE = 120, 60
@@ -112,7 +113,7 @@ def renew_token():
         return log("token expired and the claude CLI wasn't found to renew it")
     log("token expired or refused; running `claude -p /usage` to renew it")
     try:
-        subprocess.run([claude, "-p", "/usage", "--output-format", "json"], cwd=HOME, capture_output=True,
+        subprocess.run([claude, "-p", "/usage", "--output-format", "json"], check=False, cwd=HOME, capture_output=True,
                        timeout=120, stdin=subprocess.DEVNULL, env={**os.environ, "CLAWDBRIDGE_NOHOOK": "1"})
     except (OSError, subprocess.SubprocessError) as e:
         log("renew failed:", e)

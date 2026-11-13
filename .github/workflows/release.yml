@@ -1,0 +1,90 @@
+name: Release
+
+# Push a semver git tag (1.2.3 or v1.2.3) to build the APK and the three bridge installers and publish a GitHub Release.
+# The tag is the single source of version: it is stamped into the APK's versionName and the bridge's VERSION.
+#
+# Pushes to main only build (no release). That is what keeps tag builds fast: Actions caches are scoped per ref,
+# so a tag run can't reuse an earlier tag's cache, only main's. main runs save the Gradle cache; tag runs restore it.
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', 'bridge/**', '.github/workflows/release.yml']  # not applied to tag pushes
+    tags: ['*.*.*']  # coarse glob; the exact semver check is the first step
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+    steps:
+      - name: Check tag is semver
+        if: env.IS_TAG == 'true'
+        run: |
+          if ! printf '%s\n' "$GITHUB_REF_NAME" | grep -Eq '^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "Tag '$GITHUB_REF_NAME' is not semver (expected e.g. 1.2.3 or v1.2.3)"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Derive version from tag
+        if: env.IS_TAG == 'true'
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          core="${V%%-*}"
+          IFS=. read -r M m p <<< "$core"
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$((M * 10000 + m * 100 + p))" >> "$GITHUB_ENV"
+          sed -i "s/^VERSION = .*/VERSION = \"$V\"  # release CI stamps the git tag here, so it matches the APK's versionName/" bridge/clawdbridge.py
+          grep -n '^VERSION = ' bridge/clawdbridge.py
+
+      # JDK 17 is in the runner's tool cache, so this is a lookup, not a download. No `cache: gradle` here:
+      # setup-gradle below owns the Gradle cache.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The runner image ships the Android SDK with licenses accepted; this is a no-op when 36 is already there,
+      # and much faster than downloading cmdline-tools or restoring a cached SDK.
+      - name: Ensure Android SDK packages
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-36" "build-tools;36.0.0"'
+
+      # Caches the Gradle distribution, dependencies (AGP etc.) and the build cache. Writes on main, reads on tags.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.14.3
+
+      # ponytail: debug-signed APK (same as dist/ today). Add a release keystore via repo secrets when real signing matters.
+      # On main, VERSION is unset, so the empty -P values fall back to build.gradle's defaults.
+      - name: Build debug APK
+        working-directory: android
+        run: gradle :app:assembleDebug --build-cache -PappVersion=$VERSION -PappVersionCode=$VERSION_CODE
+
+      - name: Check APK and bridge versions match the tag
+        if: env.IS_TAG == 'true'
+        run: |
+          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          apk_v=$("$ANDROID_HOME"/build-tools/36.0.0/aapt dump badging "$apk" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          bridge_v=$(sed -n 's/^VERSION = "\(.*\)".*/\1/p' bridge/clawdbridge.py)
+          echo "tag $VERSION / APK $apk_v / bridge $bridge_v"
+          [ "$apk_v" = "$VERSION" ] && [ "$bridge_v" = "$VERSION" ]
+
+      - name: Build bridge installers and collect dist/
+        run: python3 bridge/build_installers.py
+
+      - name: Publish GitHub Release
+        if: env.IS_TAG == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Clawdmeter $VERSION" \
+            --generate-notes \
+            dist/clawdmeter.apk \
+            dist/clawdbridge-install-linux.sh \
+            dist/clawdbridge-install-macos.command \
+            dist/clawdbridge-install-windows.cmd

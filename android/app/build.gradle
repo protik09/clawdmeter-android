@@ -7,8 +7,9 @@ android {
         applicationId 'local.clawdmeter'
         minSdk 33
         targetSdk 36
-        versionCode 1
-        versionName '1.0'
+        // release CI passes these from the git tag (see .github/workflows/release.yml); local builds keep 1.0
+        versionCode (findProperty('appVersionCode') ?: '1').toInteger()
+        versionName findProperty('appVersion') ?: '1.0'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
