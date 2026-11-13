@@ -84,7 +84,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "Clawdmeter $VERSION" \
             --generate-notes \
-            dist/clawdmeter.apk \
+            dist/clawdmeter-protik09-$VERSION.apk \
             dist/clawdbridge-install-linux.sh \
             dist/clawdbridge-install-macos.command \
             dist/clawdbridge-install-windows.cmd

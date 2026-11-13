@@ -9,7 +9,7 @@ Download the latest files from the [Releases page](https://github.com/protik09/c
 
 | Device | File | How |
 |---|---|---|
-| Android phone | `clawdmeter.apk` | sideload (Android 13+) |
+| Android phone | `clawdmeter-protik09-<version>.apk` | sideload (Android 13+) |
 | Linux | `clawdbridge-install-linux.sh` | `sh clawdbridge-install-linux.sh` |
 | macOS | `clawdbridge-install-macos.command` | double-click (or `sh clawdbridge-install-macos.command`) |
 | Windows | `clawdbridge-install-windows.cmd` | double-click |
@@ -61,7 +61,7 @@ Download the latest files from the [Releases page](https://github.com/protik09/c
 python3 bridge/clawdbridge.py selftest           # bridge checks (usage parsing, activity, hooks, settings merge)
 export JAVA_HOME=~/.local/opt/jdk17 ANDROID_HOME=~/Android/Sdk
 (cd android && ~/.local/opt/gradle-8.14.3/bin/gradle assembleDebug)
-python3 bridge/build_installers.py               # dist/: the three installers + clawdmeter.apk
+python3 bridge/build_installers.py               # dist/: the three installers + clawdmeter-protik09-dev.apk
 ```
 
 ## License

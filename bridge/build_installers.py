@@ -8,6 +8,7 @@
 Each embeds the bridge and installs it for the current user only (no admin): Python + packages come
 from uv (x86-64 and ARM64 on all three), kept with the bridge in one folder.
 """
+import re
 import shutil
 from pathlib import Path
 
@@ -163,7 +164,8 @@ def main():
     (DIST / "clawdbridge-install-windows.cmd").write_bytes(cmd.replace("\n", "\r\n").encode("ascii"))  # cmd.exe wants CRLF
     apk = HERE.parent / "android/app/build/outputs/apk/debug/app-debug.apk"
     if apk.exists():
-        shutil.copy2(apk, DIST / "clawdmeter.apk")
+        version = re.search(r'^VERSION = "(.*?)"', bridge, re.M).group(1)  # CI stamps the tag here; "dev" locally
+        shutil.copy2(apk, DIST / f"clawdmeter-protik09-{version}.apk")
     print("\n".join(sorted(p.name for p in DIST.iterdir())))
 
 
