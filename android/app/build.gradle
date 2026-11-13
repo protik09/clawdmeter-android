@@ -8,8 +8,9 @@ android {
         minSdk 33
         targetSdk 36
         // release CI passes these from the git tag (see .github/workflows/release.yml); local builds keep 1.0
-        versionCode (findProperty('appVersionCode') ?: '1').toInteger()
-        versionName findProperty('appVersion') ?: '1.0'
+        // `=` matters: `versionCode (x).toInteger()` parses as `versionCode(x).toInteger()`
+        versionCode = (findProperty('appVersionCode') ?: '1').toInteger()
+        versionName = findProperty('appVersion') ?: '1.0'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
