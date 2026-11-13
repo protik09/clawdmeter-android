@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Clawdmeter</title>
+<style>
+@font-face{font-family:Styrene;src:url(fonts/StyreneB-Regular.otf)}
+@font-face{font-family:Tiempos;src:url(fonts/TiemposText-400-Regular.otf)}
+@font-face{font-family:Mono;src:url(fonts/DejaVuSansMono.ttf)}
+:root{--bg:#000;--panel:#1f1f1e;--text:#faf9f5;--dim:#b0aea5;--accent:#d97757;--green:#788c5d;--amber:#d97757;
+  --red:#c0392b;--track:#2a2a28;--clawd:#d97757;--eye:#141413;--u:min(1vw,.55vh)}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:Styrene,system-ui,sans-serif;overflow:hidden}
+#app{height:100%;display:flex;flex-direction:column;gap:calc(3*var(--u));padding:calc(3*var(--u)) calc(4*var(--u))}
+header{display:flex;align-items:center;justify-content:center;position:relative}
+#clock{font-family:Tiempos,Georgia,serif;font-size:calc(17*var(--u));line-height:1.1}
+#dot{position:absolute;right:calc(2*var(--u));width:calc(2.6*var(--u));height:calc(2.6*var(--u));border-radius:50%;background:#444;transition:background .4s}
+#dot.on{background:var(--green)}
+#cards{display:flex;flex-direction:column;gap:calc(3*var(--u));transition:opacity .6s}
+#cards.stale{opacity:.4}
+.card{background:var(--panel);border-radius:calc(3.5*var(--u));padding:calc(3.5*var(--u)) calc(4.5*var(--u))}
+.card.hide{display:none}
+.row{display:flex;align-items:center;justify-content:space-between}
+.pct{font-size:calc(13*var(--u));line-height:1}
+.pill{background:#8882;border-radius:99px;padding:calc(1.2*var(--u)) calc(3.6*var(--u));font-size:calc(6*var(--u))}
+.bar{position:relative;height:calc(5*var(--u));background:var(--track);border-radius:calc(1.4*var(--u));margin:calc(2.4*var(--u)) 0;overflow:hidden}
+.fill{height:100%;width:0;background:var(--green);border-radius:calc(1.4*var(--u));transition:width .8s,background .8s}
+.tick{position:absolute;top:0;bottom:0;width:calc(.7*var(--u));background:var(--text);opacity:.85;display:none}
+.sub{font-size:calc(6*var(--u));color:var(--dim)}
+#stage{flex:1;position:relative;min-height:0}
+#cv{position:absolute;inset:0;width:100%;height:100%}
+#who{position:absolute;left:0;right:0;top:calc(4*var(--u));text-align:center;pointer-events:none;padding:0 calc(3*var(--u))}
+#who .dev{font-size:calc(5.4*var(--u));color:var(--dim);letter-spacing:.03em}
+#who .proj{font-family:Tiempos,Georgia,serif;font-size:calc(8*var(--u));line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#who.multi .proj{font-size:calc(6.5*var(--u));margin-bottom:calc(2*var(--u))}
+#who .proj.idle{color:var(--dim)}
+footer{font-family:Mono,monospace;color:var(--accent);font-size:calc(6.6*var(--u));text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.3em}
+#app.alerting footer{animation:pulse .8s infinite alternate}
+#app.alerting #stage{animation:glow 1.6s infinite alternate}
+@keyframes pulse{to{opacity:.5}}
+@keyframes glow{from{box-shadow:none}to{box-shadow:inset 0 0 calc(10*var(--u)) #d9775773}}
+@media (orientation:landscape){
+  :root{--u:min(.5vw,.74vh)}
+  #app{padding:calc(10*var(--u)) calc(5*var(--u)) calc(7*var(--u));display:grid;grid-template-columns:1.1fr 1fr;grid-template-rows:auto 1fr auto;grid-template-areas:"stage head" "stage cards" "stage foot";column-gap:calc(5*var(--u))}
+  header{grid-area:head} #cards{grid-area:cards;justify-content:center} #stage{grid-area:stage} footer{grid-area:foot}
+  #who{top:0;min-height:calc(18.7*var(--u));display:flex;flex-direction:column;justify-content:center} /* centred on the clock's row */
+}
+#face{position:fixed;inset:0;transform:translateY(105%);transition:transform .51s cubic-bezier(.55,-0.35,.9,.6);z-index:5}
+#face.up{transform:none;transition:transform .86s cubic-bezier(.2,1.35,.45,1)}
+#face canvas{width:100%;height:100%;display:block}
+#settings{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:10;padding:5vw}
+#settings.open{display:flex}
+#settings .box{max-height:94vh;overflow-y:auto;background:var(--panel);color:var(--text);border-radius:16px;padding:22px;width:min(92vw,460px);font-size:16px;display:flex;flex-direction:column;gap:14px}
+#settings h2{font-weight:400;font-size:22px}
+#settings label{color:var(--dim);font-size:14px}
+#settings input{width:100%;padding:10px;border-radius:8px;border:1px solid #8886;background:var(--bg);color:var(--text);caret-color:var(--accent);font:inherit;user-select:text}
+.seg{display:flex;gap:8px}
+.seg button,.btns button{flex:1;padding:11px;border-radius:10px;border:1px solid #8886;background:var(--bg);color:var(--text);font:inherit}
+.seg button.sel{background:var(--accent);border-color:var(--accent);color:#000}
+.btns{display:flex;gap:8px}
+#hint,.note{color:var(--dim);font-size:13px;line-height:1.4}
+.list{display:flex;flex-direction:column;gap:6px;margin:6px 0}
+.item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:var(--bg)}
+.item .nm{flex:none}.item .ad{flex:1;color:var(--dim);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .tag{color:var(--dim);font-size:12px}
+.item .x{flex:none;padding:2px 10px;border-radius:8px;border:1px solid #8886;background:var(--panel);color:var(--text);font:inherit}
+.sdot{width:9px;height:9px;border-radius:50%;background:#777;flex:none}.sdot.on{background:var(--green)}
+.addrow{display:flex;gap:8px}.addrow input{flex:1}.addrow button{flex:none;padding:0 16px;border-radius:10px;border:1px solid #8886;background:var(--bg);color:var(--text);font:inherit}
+#dlist button{text-align:left;padding:11px 14px;border-radius:10px;border:1px solid #8886;background:var(--bg);color:var(--text);font:inherit}#dlist button.sel{background:var(--accent);border-color:var(--accent);color:#000}
+#blelabel.ask{color:var(--accent);font-size:15px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header><span id="clock">--:--</span><span id="dot"></span></header>
+  <div id="cards" class="stale">
+    <div class="card" id="c0"><div class="row"><span class="pct">--%</span><span class="pill">Session</span></div>
+      <div class="bar"><div class="fill"></div><div class="tick"></div></div><div class="sub">No data</div></div>
+    <div class="card" id="c1"><div class="row"><span class="pct">--%</span><span class="pill">Weekly</span></div>
+      <div class="bar"><div class="fill"></div><div class="tick"></div></div><div class="sub">No data</div></div>
+  </div>
+  <div id="stage"><canvas id="cv"></canvas><div id="who"></div></div>
+  <footer id="status">✻ Waiting…</footer>
+</div>
+<div id="face"><canvas id="fcv"></canvas></div>
+<div id="settings"><div class="box">
+  <h2>Clawdmeter</h2>
+  <div><label>Data from</label><div class="seg"><button data-m="wifi">Wi-Fi</button><button data-m="ble">Bluetooth</button></div></div>
+  <div id="wifiopts">
+    <label>Computers running the bridge (all of them are shown)</label>
+    <div id="blist" class="list"></div>
+    <div class="addrow"><input id="url" placeholder="Add by address, e.g. 192.168.1.20" inputmode="url" spellcheck="false"><button id="add">Add</button></div>
+  </div>
+  <div id="bleopts">
+    <label id="blelabel">Bluetooth</label>
+    <div id="dlist" class="list"></div>
+  </div>
+  <div class="btns"><button id="test">Test alert</button><button id="close">Done</button></div>
+  <div id="hint">Tap the clock to change brightness. Long-press the clock for these settings.</div>
+</div></div>
+<script src="clawd/manifest.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v) } catch { return d } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} },
+};
+const AND = window.Android || null;
+const now = () => Date.now();
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = xs => xs[Math.floor(Math.random() * xs.length)];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Always-on screen: touch the DOM only when something changed (every write costs a relayout/repaint).
+const setText = (el, v) => { if (el.textContent !== v) el.textContent = v; };
+const setStyle = (el, k, v) => { if (el.style[k] !== v) el.style[k] = v; };
+const timeout = ms => { // AbortSignal.timeout arrived in WebView 103; Android 13 can ship 101
+  if (AbortSignal.timeout) return AbortSignal.timeout(ms);
+  const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal;
+};
+let drawKey = '', faceKey = ''; // what the sprite and face canvases last drew
+
+// ---- state (device settings persist like the board's NVS) -------------------------------
+const P = { lv: LS.get('lv', 3), aa: LS.get('aa', 120), pm: LS.get('pm', 1), th: LS.get('th', ''), tf: null };
+let mode = LS.get('mode', 'wifi');
+// hand-entered bridge addresses (older versions kept one under 'bridge')
+let manual = LS.get('manual', null) || (LS.get('bridge', null) ? [LS.get('bridge', null)] : location.protocol.startsWith('http') ? [location.origin] : []);
+let found = [];                                     // [{name, url}] bridges found on the LAN (Android NSD)
+let bleDevs = [], bleText = '', blePick = LS.get('blePick', ''), lastBle = {};
+let linkSince = 0, wasUp = false, lastEventAt = now(), turnStart = 0, alert = null;
+
+function applyTheme(th) {
+  if (!/^[0-9a-fA-F]{66}$/.test(th || '')) return;
+  const keys = ['bg', 'panel', 'text', 'dim', 'accent', 'green', 'amber', 'red', 'track', 'clawd', 'eye'];
+  keys.forEach((k, i) => document.documentElement.style.setProperty('--' + k, '#' + th.substr(i * 6, 6)));
+  if (AND) AND.setBg('#' + th.substr(0, 6));
+  faceKey = ''; // repaint the face in the new colours
+  // ponytail: sprites keep the official orange; recolouring them needs pixel access to file:// images.
+}
+applyTheme(P.th);
+
+// ---- sources: every Wi-Fi bridge at once, or the one chosen Bluetooth computer -------------
+// Payloads follow upstream docs/protocol.md; the bridge adds dev (computer), pj (projects), ai, stale.
+const SRC = new Map(); // id (bridge URL or Bluetooth address) -> source
+function source(id, kind) {
+  let s = SRC.get(id);
+  if (!s) SRC.set(id, s = { id, kind, p: {}, at: 0, es: undefined, hist: [], prevS: null, prevAcct: null, riseAt: 0, aAt: 0, sAt: null, wAt: null, dismissed: null, dup: null });
+  return s;
+}
+function live(s) { return s.kind === 'ble' ? s.id === activeBle() : !s.dup && now() - s.at < 5000; }
+function sources() { return [...SRC.values()].filter(live); }
+function label(s) { return s.p.dev || (bleDevs.find(d => d.id === s.id) || {}).name || s.id.replace(/^https?:\/\//, ''); }
+
+function ingest(s, p) {
+  const t = now();
+  s.at = t;
+  if (s.kind === 'ble') { // a paired computer may change the stored display settings; any LAN device could fake Wi-Fi
+    for (const k of ['lv', 'aa', 'pm', 'th']) if (k in p && p[k] !== P[k]) { P[k] = p[k]; LS.set(k, p[k]); if (k === 'th') applyTheme(p.th); }
+  } else if ('pm' in p) P.pm = p.pm;
+  if ('tf' in p) P.tf = p.tf;
+  if ('a' in p) s.aAt = t;
+  Object.assign(s.p, p); // Bluetooth payloads may leave fields out: keep the last value
+  if ('s' in p) { s.p.stale = p.stale ? 1 : 0; sample(s, p, t); }
+  if ('es' in p && p.es !== s.es) {
+    if (s.es !== undefined) hookEvent(p.e);
+    s.lastE = p.e; s.lastEAt = s.es === undefined && p.e !== 's' ? 0 : t; // a prompt from before we connected isn't "now"
+    s.es = p.es;
+  }
+  const busyElsewhere = alert && alert.src && alert.src !== s; // another computer's alert is up: queue behind it
+  if (p.m && !busyElsewhere && !(p.ai && (p.ai === s.dismissed || (alert && alert.src === s && alert.ai === p.ai)))) startAlert(p.m, !!p.b, p.ai, 120000, s);
+  if (p.x && alert && alert.src === s) endAlert(false);
+  render();
+}
+function sample(s, p, t) {
+  s.sAt = p.sr >= 0 ? t + p.sr * 60000 : null;
+  s.wAt = p.wr >= 0 ? t + p.wr * 60000 : null;
+  if (p.rp) return; // replays don't feed the rate math or reset detection
+  const acct = p.acct || 'pro';
+  if (s.prevAcct !== acct) s.hist = [];
+  else if (s.prevS !== null && p.s < s.prevS - 5) { s.hist = []; if (s === shown()) windowReset(!!p.c); }
+  if (s.prevS !== null && p.s > s.prevS) { lastEventAt = t; s.riseAt = t; } // a usage rise counts as activity
+  s.prevS = p.s; s.prevAcct = acct;
+  s.hist.push([t, p.s]);
+  while (s.hist.length && t - s.hist[0][0] > 900000) s.hist.shift();
+}
+// The meters show one account: the one whose session % rose most recently, else the highest (upstream's rule).
+function shown() {
+  return sources().filter(s => 's' in s.p).sort((a, b) => (b.riseAt - a.riseAt) || ((b.p.s | 0) - (a.p.s | 0)))[0] || null;
+}
+function rate() { // session %/h over the last 15 min
+  const s = shown(), h = s ? s.hist : [];
+  if (h.length < 2) return 0;
+  const [t0, s0] = h[0], [t1, s1] = h[h.length - 1];
+  return t1 - t0 < 120000 ? 0 : (s1 - s0) / ((t1 - t0) / 3.6e6);
+}
+// Is Claude working anywhere? The bridge counts sessions (wk); upstream's app only sends prompt/stop events.
+function working() {
+  return sources().some(s => 'wk' in s.p ? s.p.wk > 0
+    : (now() - s.aAt < 180000 && (s.p.a | 0) > 0) || ((s.lastE === 'p' || s.lastE === 'b') && now() - s.lastEAt < 900000));
+}
+function doneAt() { // when a turn last finished (ms), any computer
+  return Math.max(0, ...sources().map(s => s.p.dt ? s.p.dt * 1000 : s.lastE === 's' ? s.lastEAt : 0));
+}
+function activity() { return Math.max(0, ...sources().map(s => now() - s.aAt < 180000 ? s.p.a | 0 : 0)); }
+function mood() { const r = rate(); return Math.max(r < 5 ? 0 : r < 10 ? 1 : r < 20 ? 2 : 3, activity()); }
+function lvf() { return ({ 2: 1 / 0.6, 4: 1 / 1.8, 5: 1 / 3 })[P.lv] || 1; } // timing multiplier
+
+// ---- Wi-Fi: poll every bridge (found on the LAN or added by hand) ---------------------------
+window.onBridges = list => { found = Array.isArray(list) ? list : []; if (settingsOpen()) renderSettings(); };
+function bridgeUrls() { return [...new Set([...found.map(f => f.url), ...manual])]; }
+let lastRediscover = 0;
+async function pollOne(url) {
+  try {
+    const r = await fetch(url + '/state', { cache: 'no-store', signal: timeout(3000) });
+    const p = await r.json(), s = source(url, 'wifi');
+    // one computer can answer on several addresses (found + typed, Ethernet + Wi-Fi): keep one.
+    // Same install id = same computer (two different "ubuntu" machines stay apart).
+    const me = p.id || p.dev;
+    const twin = me && [...SRC.values()].find(o => o !== s && o.kind === 'wifi' && !o.dup && now() - o.at < 5000 && (o.p.id || o.p.dev) === me);
+    s.dup = twin ? twin.id : null;
+    if (s.dup) s.at = now(); else ingest(s, p);
+  } catch {
+    const s = SRC.get(url); // a found computer that went quiet may have a new address: Android cached the old one
+    if (AND && found.some(f => f.url === url) && (!s || now() - s.at > 30000) && now() - lastRediscover > 60000) {
+      lastRediscover = now(); AND.rediscover();
+    }
+  }
+}
+const inflight = new Set();
+async function pollLoop() {
+  for (;;) {
+    if (mode === 'wifi') {
+      const urls = bridgeUrls();
+      for (const [id, s] of SRC) if (s.kind === 'wifi' && !urls.includes(id)) SRC.delete(id);
+      // each computer on its own: one that doesn't answer (3 s timeout) mustn't hold up the rest
+      for (const u of urls) if (!inflight.has(u)) { inflight.add(u); pollOne(u).finally(() => inflight.delete(u)); }
+      if (settingsOpen()) renderSettings();
+    }
+    await sleep(1000);
+  }
+}
+
+// ---- Bluetooth: computers write to this phone; with several connected, the user picks one ----
+function activeBle() {
+  if (bleDevs.length === 1) return bleDevs[0].id;
+  return bleDevs.some(d => d.id === blePick) ? blePick : null;
+}
+window.onBle = (text, list) => {
+  bleText = text; bleDevs = Array.isArray(list) ? list : [];
+  if (mode === 'ble' && bleDevs.length > 1 && !activeBle()) openSettings(); // ask which computer to show
+  if (settingsOpen()) renderSettings();
+  render();
+};
+window.onPayload = (raw, kind, addr) => { // Bluetooth writes (Wi-Fi goes through pollOne)
+  let p; try { p = JSON.parse(raw) } catch { return }
+  if (!p || typeof p !== 'object' || kind !== 'ble') return;
+  lastBle[addr] = p;
+  if (mode === 'ble' && addr === activeBle()) ingest(source(addr, 'ble'), p);
+};
+function chooseBle(addr) {
+  blePick = addr; LS.set('blePick', addr);
+  for (const [id, s] of SRC) if (s.kind === 'ble' && id !== addr) SRC.delete(id);
+  const last = lastBle[addr]; // show what it last sent, without replaying its alert
+  if (last) { const { m, b, x, ...rest } = last; ingest(source(addr, 'ble'), rest); }
+  renderSettings(); render();
+}
+
+function setMode(m) {
+  mode = m; LS.set('mode', m);
+  SRC.clear();
+  if (AND) { AND.setBle(m === 'ble'); AND.setDiscovery(m === 'wifi'); }
+  renderSettings(); render();
+}
+
+// ---- rendering --------------------------------------------------------------------------
+function fmtReset(at) {
+  if (at === null) return 'Not started';
+  const m = Math.max(0, Math.round((at - now()) / 60000));
+  const d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
+  return 'Resets in ' + (d ? `${d}d ${h}h` : `${h}h ${m % 60}m`);
+}
+function barColor(pct, at, winMin) {
+  if (P.pm && at !== null) {
+    const left = Math.min(winMin, Math.max(0, (at - now()) / 60000));
+    const elapsed = 100 * (winMin - left) / winMin;
+    if (pct >= 100) return 'var(--red)';
+    return pct > elapsed + 5 ? 'var(--amber)' : 'var(--green)';
+  }
+  return pct >= 80 ? 'var(--red)' : pct >= 50 ? 'var(--amber)' : 'var(--green)';
+}
+function card(el, s, pct, at, winMin, name) {
+  const has = !!s && s.p.ok !== false;
+  setText(el.querySelector('.pct'), has ? pct + '%' : '--%');
+  setText(el.querySelector('.pill'), name);
+  const f = el.querySelector('.fill');
+  setStyle(f, 'width', has ? Math.min(100, pct) + '%' : '0px');
+  setStyle(f, 'background', barColor(pct, at, winMin));
+  const tk = el.querySelector('.tick');
+  if (has && P.pm && at !== null) {
+    const left = Math.min(winMin, Math.max(0, (at - now()) / 60000));
+    setStyle(tk, 'display', 'block'); setStyle(tk, 'left', (100 * (winMin - left) / winMin).toFixed(1) + '%');
+  } else setStyle(tk, 'display', 'none');
+  const whose = sources().length > 1 && s ? ' · ' + label(s) : ''; // several computers: say whose account this is
+  setText(el.querySelector('.sub'), has ? fmtReset(at) + whose : (s && s.p.ok === false ? 'No usage data' : 'No data'));
+}
+function linkUp() { return sources().length > 0; }
+function isStale() { const s = shown(); return !s || s.p.ok === false || !!s.p.stale || now() - s.at > 90000; }
+function render() {
+  const s = shown(), p = s ? s.p : {}, up = linkUp();
+  $('#c0').classList.toggle('hide', p.acct === 'week');
+  card($('#c0'), s, p.s | 0, s && s.sAt, 300, 'Session');
+  card($('#c1'), s, p.w | 0, s && s.wAt, 10080, 'Weekly');
+  $('#cards').classList.toggle('stale', isStale());
+  if (up && !wasUp) linkSince = now();
+  wasUp = up; $('#dot').classList.toggle('on', up);
+  renderWho();
+}
+function div(cls, text) { const e = document.createElement('div'); e.className = cls; e.textContent = text; return e; }
+let whoKey = '';
+function renderWho() { // which computer(s) and project(s) Claude Code is working on
+  const rows = sources().sort((a, b) => (b.p.n | 0) - (a.p.n | 0)).slice(0, 3).map(s => {
+    const n = s.p.n | 0, pj = Array.isArray(s.p.pj) ? s.p.pj.map(String) : [];
+    return [[label(s), n ? `${n} session${n > 1 ? 's' : ''} active` : 'idle'].join(' · '), pj.join(' · '), n];
+  });
+  const key = JSON.stringify(rows);
+  if (key === whoKey) return;
+  whoKey = key;
+  const who = $('#who');
+  who.classList.toggle('multi', rows.length > 1);
+  who.replaceChildren(...rows.flatMap(([dev, pj, n]) => [div('dev', dev), div('proj' + (n ? '' : ' idle'), pj)]));
+}
+
+const VERBS = ['Accomplishing', 'Elucidating', 'Perusing', 'Actioning', 'Enchanting', 'Philosophising', 'Actualizing', 'Envisioning',
+  'Pondering', 'Baking', 'Finagling', 'Pontificating', 'Booping', 'Flibbertigibbeting', 'Processing', 'Brewing', 'Forging',
+  'Puttering', 'Calculating', 'Forming', 'Puzzling', 'Cerebrating', 'Frolicking', 'Reticulating', 'Channelling', 'Generating',
+  'Ruminating', 'Churning', 'Germinating', 'Scheming', 'Clauding', 'Hatching', 'Schlepping', 'Coalescing', 'Herding', 'Shimmying',
+  'Cogitating', 'Honking', 'Shucking', 'Combobulating', 'Hustling', 'Simmering', 'Computing', 'Ideating', 'Smooshing', 'Concocting',
+  'Imagining', 'Spelunking', 'Conjuring', 'Incubating', 'Spinning', 'Considering', 'Inferring', 'Stewing', 'Contemplating', 'Jiving',
+  'Sussing', 'Cooking', 'Manifesting', 'Synthesizing', 'Crafting', 'Marinating', 'Thinking', 'Creating', 'Meandering', 'Tinkering',
+  'Crunching', 'Moseying', 'Transmuting', 'Deciphering', 'Mulling', 'Unfurling', 'Deliberating', 'Mustering', 'Unravelling',
+  'Determining', 'Musing', 'Vibing', 'Discombobulating', 'Noodling', 'Wandering', 'Divining', 'Percolating', 'Whirring', 'Doing',
+  'Wibbling', 'Effecting', 'Wizarding', 'Working', 'Wrangling'];
+const SPIN = ['·', '✻', '✽', '✶', '✳', '✢'], SPIN_MS = [260, 130, 130, 130, 130, 260];
+let spinPhase = 0, spinAt = 0, verbI = Math.floor(Math.random() * VERBS.length), verbAt = 0, verbTick = 0;
+function statusLine(t) {
+  const el = $('#status');
+  if (alert) return setText(el, alert.m);
+  const verbMs = P.lv === 1 ? 60000 : 6000;
+  if (t - verbAt >= verbMs) { verbAt = t; verbTick++; verbI = (verbI + 1) % VERBS.length; }
+  let word, spin = P.lv !== 1;
+  if (!linkUp()) word = 'Waiting\u2026';
+  else if (isStale()) word = (verbTick & 1 ? (shown() ? 'Stale' : 'No data') : 'Listening') + '\u2026';
+  else if (t - linkSince < 5000) word = 'Connected\u2026';
+  else if (working()) word = VERBS[verbI] + '\u2026'; // the whimsical verbs only while Claude works
+  else { // finished or waiting on you: say so, and hold still
+    const d = doneAt();
+    word = d && t - d < 12 * 3600e3 ? 'Done ' + fmtTime(new Date(d)) : 'Idle';
+    spin = false;
+  }
+  let glyph = SPIN[1];
+  if (spin) {
+    const idx = spinPhase < 6 ? spinPhase : 10 - spinPhase;
+    if (t - spinAt >= SPIN_MS[idx]) { spinAt = t; spinPhase = (spinPhase + 1) % 10; }
+    glyph = SPIN[spinPhase < 6 ? spinPhase : 10 - spinPhase];
+  }
+  setText(el, `${glyph} ${word}`);
+}
+
+let h24 = null, h24At = 0;
+function phone24h() { // Android's "Use 24-hour format" (the page alone only sees the locale)
+  if (now() - h24At > 60000) {
+    h24At = now();
+    h24 = AND ? AND.is24h() : !new Intl.DateTimeFormat([], { hour: 'numeric' }).resolvedOptions().hour12;
+  }
+  return h24;
+}
+function fmtTime(d) { // the clock's 12/24-hour choice: payload tf, else the phone's setting
+  const h12 = P.tf === 12 || (P.tf == null && !phone24h());
+  return h12 ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
+    : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+function clock() { setText($('#clock'), fmtTime(new Date())); }
+
+// ---- sound -------------------------------------------------------------------------------
+let ac;
+function tones(freqs, gap = 0.14, dur = 0.22) {
+  try {
+    ac = ac || new AudioContext(); if (ac.state === 'suspended') ac.resume();
+    let t = ac.currentTime + 0.02;
+    for (const f of freqs) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.frequency.value = f; g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.35, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.05); t += gap;
+    }
+  } catch {}
+}
+
+// ---- Clawd: sprite player ----------------------------------------------------------------
+const A = window.CLAWD, IMG = {};
+for (const k in A) if (A[k].file) { IMG[k] = new Image(); IMG[k].src = 'clawd/' + A[k].file; }
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let cur = null, away = false, gen = 0, busy = false;
+
+function play(name, o = {}) { // resolves true when finished, false when cut off
+  return new Promise(res => {
+    if (cur) cur.res(false);
+    const t = performance.now();
+    cur = { name, i: o.from || 0, at: t, t0: t, hold: o.hold || 0, flip: !!o.flip, move: o.move || null, res };
+  });
+}
+function stop() { if (cur) { const r = cur.res; cur = null; r(false); } }
+function step(t) {
+  if (!cur) return;
+  const a = A[cur.name];
+  while (cur && t - cur.at >= a.ms[cur.i]) {
+    cur.at += a.ms[cur.i];
+    let n = cur.i + 1;
+    if (a.loop && cur.i === a.loopEnd && t - cur.t0 < cur.hold) n = a.loopStart;
+    if (n >= a.frames) { const r = cur.res; cur = null; r(true); return; }
+    cur.i = n;
+  }
+}
+function walk(x0, x1, speed = 14) { // stage cells per second
+  const hold = Math.abs(x1 - x0) / speed * 1000;
+  return play('walking', { hold, move: [x0, x1, hold], flip: x1 < x0 });
+}
+function draw(t) {
+  const W = cv.width, H = cv.height;
+  const k = Math.max(1, Math.floor(Math.min(W / 55, H / 37)));
+  const X0 = Math.round((W - 55 * k) / 2), Y0 = Math.round((H - 37 * k) * 0.75);
+  const name = cur ? cur.name : 'still', a = A[name], img = IMG[name], i = cur ? cur.i : 0, flip = cur ? cur.flip : false;
+  let x = 0;
+  if (cur && cur.move) { const [x0, x1, d] = cur.move; x = x0 + (x1 - x0) * Math.min(1, (t - cur.t0) / d); }
+  const ox = flip ? 55 - a.ox - a.w : a.ox;
+  const dx = X0 + Math.round((ox + x) * k), dy = Y0 + a.oy * k;
+  const hidden = !cur && away, key = hidden ? W + 'x' + H : [W, H, name, i, flip, dx, img && img.complete].join();
+  if (key === drawKey) return; // same picture as last frame: leave the canvas (and the GPU) alone
+  drawKey = key;
+  ctx.clearRect(0, 0, W, H);
+  if (hidden || !img || !img.complete) return;
+  ctx.save();
+  if (flip) { ctx.translate(dx + a.w * k, dy); ctx.scale(-1, 1); ctx.drawImage(img, i * a.w, 0, a.w, a.h, 0, 0, a.w * k, a.h * k); }
+  else ctx.drawImage(img, i * a.w, 0, a.w, a.h, dx, dy, a.w * k, a.h * k);
+  ctx.restore();
+}
+function fit() {
+  const dpr = devicePixelRatio || 1;
+  for (const c of [cv, fcv]) { c.width = Math.round(c.clientWidth * dpr); c.height = Math.round(c.clientHeight * dpr); }
+  ctx.imageSmoothingEnabled = false;
+  drawKey = faceKey = ''; // resized canvases are blank: draw again
+}
+
+// A sequence owns Clawd until it ends or a newer one starts (gen).
+async function run(fn) {
+  const g = ++gen; busy = true; stop();
+  try { await fn(() => g === gen); } finally { if (g === gen) { busy = false; nextAct = now() + actDelay(); } }
+}
+async function home(live) { // make sure he's on stage
+  if (away && live()) { await walk(-40, 0, 21); away = false; }
+}
+
+// ---- Clawd: director (simplified from upstream firmware clawd_director) ------------------
+let nextAct = now() + 8000, lastActName = '', a3Since = 0, lastShowAt = -1e12, lastShowScene = '', nextDip = 0, dipWalk = false;
+function actDelay() { return Math.max(1500, [10, 7, 5, 3.5][mood()] * 1000 * rnd(0.6, 1.4) * lvf()); }
+const ACTS = [['pointing', 'lurk'], ['waving', 'lurk', 'pointing'], ['waving', 'dancing', 'lurk'], ['dancing', 'waving', 'dancing', 'lurk']];
+const SHOWS = [['laptop', 'dancing', 'skateboard', 'soccer'], ['racing_car', 'cloud', 'sailing_scene', 'jumping_happy']];
+
+function idleAct() {
+  let opts = ACTS[mood()].filter(x => x !== lastActName);
+  const act = pick(opts); lastActName = act;
+  run(async live => {
+    if (act !== 'lurk') { await play(act); return; }
+    if (!await walk(0, -40)) return;
+    away = true;
+    if (!live()) return;
+    await sleep(rnd(1500, 3000)); if (!live()) return;
+    if (!await play('lurking', { flip: true })) return;
+    await sleep(800); if (!live()) return;
+    if (await walk(-40, 0)) away = false;
+  });
+}
+
+function show() {
+  lastShowAt = now(); a3Since = 0;
+  const rm = rate(), set = SHOWS[rm >= 20 ? 1 : 0].filter(s => s !== lastShowScene), scene = pick(set);
+  lastShowScene = scene;
+  run(async live => {
+    await home(live);
+    if (!await play('pointing')) return;
+    if (!await play(scene, { hold: 16000 })) return;
+    await play('waving');
+  });
+}
+
+function hookEvent(e) {
+  const t = now();
+  lastEventAt = t;
+  if (e === 'p' || e === 'b') {
+    if (!turnStart) turnStart = t;
+    if (faceUp) return faceDrop();
+    if (P.lv > 1 && !alert && !inShow()) run(async live => { await home(live); await play('pointing'); });
+  } else if (e === 's') {
+    const long = turnStart && t - turnStart >= 120000 * lvf();
+    turnStart = 0;
+    if (long && P.lv > 1 && !alert && !faceUp && !inShow()) run(async live => { await home(live); await play('waving'); });
+  }
+}
+function inShow() { return busy && cur && SHOWS.flat().includes(cur.name); }
+
+function windowReset(chime) {
+  if (chime) tones([660, 880, 1175], 0.16, 0.3);
+  if (P.lv === 1 || alert) return;
+  if (faceUp) faceDrop(true);
+  run(async live => { await home(live); if (await play('jumping_happy')) await play('jumping_happy'); });
+}
+
+function startAlert(m, chime, ai, ttl, src) {
+  const isNew = !alert;
+  if (src && sources().length > 1) m = label(src) + ': ' + m; // several computers: say which one wants you
+  alert = { m, ai, until: now() + ttl, src: src || null };
+  lastEventAt = now();
+  $('#app').classList.add('alerting');
+  if (chime && isNew) tones([988, 1319], 0.16, 0.35);
+  if (faceUp) faceDrop(true);
+  if (!isNew) return;
+  const animMs = (P.aa ?? 120) * 1000, t0 = now();
+  run(async live => {
+    await home(live);
+    let wave = true;
+    while (live() && alert && now() - t0 < animMs) { await play(wave ? 'waving' : 'pointing'); wave = !wave; }
+  });
+}
+function endAlert(byTap) {
+  if (!alert) return;
+  const s = alert.src;
+  if (byTap && s) { // tell the computer that raised it
+    s.dismissed = alert.ai;
+    if (s.kind === 'ble') { if (AND) AND.dismiss(s.id); }
+    else fetch(s.id + '/dismiss', { method: 'POST' }).catch(() => {});
+  }
+  alert = null;
+  $('#app').classList.remove('alerting');
+  run(async () => {}); // cut the alert animation; back to still
+}
+
+function tick() {
+  const t = now();
+  if (alert && t > alert.until) endAlert(true); // the board's 2-minute timeout also notifies dismiss
+  if (alert || busy) return;
+  if (faceUp) {
+    if (P.lv > 1 && t > nextDip) calmDip();
+    return;
+  }
+  if (P.lv > 1 && t - lastEventAt > 600000 && activity() === 0) return faceRise();
+  const showAt = P.lv >= 5 ? 2 : 3;
+  if (activity() >= showAt) { if (!a3Since) a3Since = t; } else a3Since = 0;
+  if (P.lv > 1 && a3Since && t - a3Since > 300000 * lvf() && t - lastShowAt > 900000 * lvf()) return show();
+  if (P.lv > 1 && t > nextAct) idleAct();
+}
+
+// ---- screensaver face ----------------------------------------------------------------------
+const fcv = $('#fcv'), fctx = fcv.getContext('2d');
+let faceUp = false, blinkUntil = 0, blink2At = 0, glance = 0, glanceTo = 0, glanceFrom = 0, glanceAt = 0, nextFaceAct = 0;
+function setFace(up) {
+  faceUp = up; $('#face').classList.toggle('up', up);
+  if (AND) AND.setBg(getComputedStyle(document.documentElement).getPropertyValue(up ? '--clawd' : '--bg').trim());
+}
+function faceRise() {
+  if (faceUp) return;
+  run(async live => {
+    if (!away) { if (!await walk(0, -40)) return; away = true; }
+    setFace(true);
+    nextDip = now() + rnd(180000, 300000) * lvf(); nextFaceAct = performance.now() + 2000;
+  });
+}
+function faceDrop(quick) {
+  if (!faceUp) return;
+  blinkUntil = performance.now() + 180;
+  setTimeout(() => {
+    setFace(false);
+    if (!alert) run(async live => { await sleep(300); await home(live); });
+  }, quick ? 0 : 200);
+}
+function calmDip() {
+  setFace(false);
+  dipWalk = !dipWalk;
+  run(async live => {
+    await sleep(500); if (!live()) return;
+    await home(live);
+    await play(dipWalk ? 'walking' : 'magnifier', { hold: 10000 });
+    if (!live()) return;
+    if (await walk(0, -40)) away = true;
+    if (!live()) return;
+    setFace(true);
+    nextDip = now() + rnd(180000, 300000) * lvf();
+  });
+}
+function drawFace(t) {
+  if (!faceUp && !$('#face').classList.contains('up')) return;
+  const W = fcv.width, H = fcv.height, f = Math.min(W, H) / 480;
+  if (t > nextFaceAct + 0 && performance.now() > blinkUntil && faceUp) {
+    const r = Math.random(); nextFaceAct = t + rnd(2000, 6000);
+    if (r < 0.45) blinkUntil = performance.now() + 180;
+    else if (r < 0.57) { blinkUntil = performance.now() + 180; blink2At = performance.now() + 320; }
+    else { glanceFrom = glance; glanceTo = r < 0.79 ? -1 : 1; glanceAt = performance.now(); setTimeout(() => { glanceFrom = glance; glanceTo = 0; glanceAt = performance.now(); }, rnd(700, 1600) + 280); }
+  }
+  const pn = performance.now();
+  if (blink2At && pn > blink2At) { blinkUntil = pn + 180; blink2At = 0; }
+  const e = Math.min(1, (pn - glanceAt) / 280); glance = glanceFrom + (glanceTo - glanceFrom) * (1 - Math.pow(1 - e, 3));
+  const cx = W / 2, top = (H - 480 * f) / 2 + 150 * f, closed = pn < blinkUntil, u = 12 * f;
+  const key = [W, H, closed, glance.toFixed(3)].join();
+  if (key === faceKey) return;
+  faceKey = key;
+  const cs = getComputedStyle(document.documentElement);
+  fctx.fillStyle = cs.getPropertyValue('--clawd'); fctx.fillRect(0, 0, W, H);
+  fctx.fillStyle = cs.getPropertyValue('--eye');
+  for (const side of [-1, 1]) {
+    const far = (glance < 0 && side > 0) || (glance > 0 && side < 0);
+    const ex = cx + side * 80 * f + glance * (far ? 30 : 20) * f;
+    if (!closed) { fctx.fillRect(ex - 22 * f, top, 44 * f, 120 * f); continue; }
+    const steps = [0, 1, 2, 3, 4, 3, 2, 1, 0];
+    steps.forEach((s, r) => fctx.fillRect(ex - 3 * u + (side < 0 ? s : 4 - s) * u, top + 20 * f + r * u, 2 * u, u));
+  }
+}
+
+// ---- input -----------------------------------------------------------------------------
+const BRIGHT = [-1, 0.5, 0.2, 0.05];
+let brightI = LS.get('bright', 0), pressT = 0, longPress = false;
+if (AND) AND.setBrightness(BRIGHT[brightI]);
+$('#clock').addEventListener('pointerdown', () => { longPress = false; pressT = setTimeout(() => { longPress = true; openSettings(); }, 700); });
+$('#clock').addEventListener('pointerup', () => clearTimeout(pressT));
+$('#clock').addEventListener('click', e => {
+  e.stopPropagation(); if (longPress) return;
+  brightI = (brightI + 1) % BRIGHT.length; LS.set('bright', brightI);
+  if (AND) AND.setBrightness(BRIGHT[brightI]); else document.body.style.filter = brightI ? `brightness(${BRIGHT[brightI]})` : '';
+});
+$('#app').addEventListener('click', () => {
+  lastEventAt = now(); tones([]); // also unlocks audio in browsers
+  if (alert) return endAlert(true);
+  if (busy) return;
+  run(async live => { await home(live); await play('jumping', { from: 1 }); });
+});
+$('#face').addEventListener('click', () => { lastEventAt = now(); faceDrop(); });
+function settingsOpen() { return $('#settings').classList.contains('open'); }
+function openSettings() { renderSettings(); $('#settings').classList.add('open'); }
+function el(tag, cls, text) { const e = document.createElement(tag); e.className = cls; if (text) e.textContent = text; return e; }
+function renderSettings() {
+  document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('sel', b.dataset.m === mode));
+  $('#wifiopts').style.display = mode === 'wifi' ? '' : 'none';
+  $('#bleopts').style.display = mode === 'ble' ? '' : 'none';
+  const urls = bridgeUrls();
+  $('#blist').replaceChildren(...(urls.length ? urls.map(u => {
+    const s = SRC.get(u), ok = s && !s.dup && now() - s.at < 5000, f = found.find(x => x.url === u);
+    const name = s && s.p.dev ? s.p.dev : f ? f.name.replace(/^Clawdmeter on /, '') : '';
+    const row = el('div', 'item');
+    row.append(el('span', 'sdot' + (ok ? ' on' : '')), el('span', 'nm', name || u.replace(/^https?:\/\//, '')),
+      el('span', 'ad', (name ? u.replace(/^https?:\/\//, '') : '') + (s && s.dup ? ' (same computer)' : !s || ok ? '' : ' (not answering)')));
+    if (manual.includes(u)) {
+      const x = el('button', 'x', '\u00d7');
+      x.onclick = () => { manual = manual.filter(m => m !== u); LS.set('manual', manual); renderSettings(); };
+      row.append(x);
+    } else row.append(el('span', 'tag', 'found'));
+    return row;
+  }) : [el('div', 'note', AND ? 'Looking for computers running the bridge on this network\u2026' : 'Add the bridge address below.')]));
+  const ask = bleDevs.length > 1 && !activeBle();
+  $('#blelabel').className = ask ? 'ask' : '';
+  $('#blelabel').textContent = !AND ? 'Bluetooth needs the Android app.'
+    : ask ? 'Several computers are connected. Which one should this phone show?'
+    : 'Bluetooth: ' + (bleText || 'starting') + (bleDevs.length > 1 ? ' \u00b7 tap to switch computer' : '');
+  $('#dlist').replaceChildren(...bleDevs.map(d => {
+    const b = el('button', d.id === activeBle() ? 'sel' : '', (lastBle[d.id] && lastBle[d.id].dev) || d.name || d.id);
+    b.onclick = () => chooseBle(d.id);
+    return b;
+  }));
+}
+function addManual() {
+  let v = $('#url').value.trim().replace(/\/+$/, '');
+  if (!v) return;
+  if (!/^https?:\/\//.test(v)) v = 'http://' + v;
+  if (!/:\d+$/.test(v)) v += ':8787';
+  if (!manual.includes(v)) { manual.push(v); LS.set('manual', manual); }
+  $('#url').value = ''; renderSettings();
+}
+$('#add').addEventListener('click', addManual);
+$('#url').addEventListener('keydown', e => { if (e.key === 'Enter') addManual(); });
+document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.m)));
+$('#close').addEventListener('click', () => {
+  if ($('#url').value.trim()) addManual();
+  $('#settings').classList.remove('open'); LS.set('setup', true);
+});
+$('#test').addEventListener('click', () => { $('#settings').classList.remove('open'); startAlert('Clawdmeter test alert', true, 'test', 30000, null); });
+
+// ---- main loop ----------------------------------------------------------------------------
+addEventListener('resize', fit);
+fit();
+// Sprite frames last >= 80 ms, so a 25 Hz timer is enough; vsync (60 Hz) only while something glides.
+function frame() {
+  const t = performance.now();
+  step(t); draw(t); drawFace(t);
+  if ((cur && cur.move) || (faceUp && t - glanceAt < 320)) requestAnimationFrame(frame);
+  else setTimeout(frame, 40);
+}
+frame();
+setInterval(() => { clock(); render(); }, 1000);
+setInterval(() => { tick(); statusLine(now()); }, 125);
+setInterval(() => { $('#app').style.transform = `translate(${Math.round(rnd(-4, 4))}px,${Math.round(rnd(-4, 4))}px)`; }, 60000); // AMOLED burn-in
+clock(); render();
+setMode(mode);
+pollLoop();
+if (!LS.get('setup', false)) openSettings();
+</script>
+</body>
+</html>
