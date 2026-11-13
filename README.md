@@ -20,6 +20,10 @@ Download the latest files from the [Releases page](https://github.com/protik09/c
   - macOS bridges are Wi-Fi only: Bluetooth needs an app bundle with a usage description.
   - Windows asks once whether Python may use the network; allow Private networks.
   - Linux: if `ufw` or `firewalld` is on, the installer offers the command that opens TCP 8787 and mDNS.
+  - Linux without systemd (Alpine, Void, Devuan…): the bridge starts from an `@reboot` crontab line when a cron
+    daemon runs, otherwise from a desktop autostart entry. The installer says which, or that nothing will.
+  - Headless Linux with systemd (a Pi over SSH): run `loginctl enable-linger` once, or the bridge stops at logout.
+  - WSL and ChromeOS's Linux sit behind NAT with no Bluetooth, so the phone can't reach them as is.
 
 ## Running it unattended
 
@@ -40,7 +44,8 @@ Download the latest files from the [Releases page](https://github.com/protik09/c
   with that computer (for example from upstream's app). Forget the pairing on both sides: the phone's Bluetooth
   settings, and the computer's (`bluetoothctl remove <phone address>` on Linux). The bridge doesn't need pairing,
   and Linux often can't reach a paired Android phone's private address.
-- **Logs:** `journalctl --user -u clawdbridge -f` (Linux), `~/.config/clawdmeter/bridge.log` (macOS) or
+- **Logs:** `journalctl --user -u clawdbridge -f` (Linux with systemd), `~/.config/clawdmeter/bridge.log` (macOS,
+  Linux without systemd) or
   `%LOCALAPPDATA%\Clawdmeter\bridge.log` (Windows).
 
 ## Phone controls

@@ -714,18 +714,25 @@ HOOKS = [("UserPromptSubmit", None, "clear event"), ("PostToolUse", None, "clear
 OURS = re.compile(r'(clawdbridge\.py|clawdmeter(\.exe)?)"? hook (alert|clear|event)')  # also upstream's entries
 
 
+def our_hooks(prefix):
+    """settings.json "hooks" entries for the bridge run as `prefix` (quoted python + script)."""
+    out = {}
+    for ev, matcher, args in HOOKS:
+        g = {"hooks": [{"type": "command", "command": f"{prefix} hook {args}"}]}
+        out.setdefault(ev, []).append({"matcher": matcher, **g} if matcher else g)
+    return out
+
+
 def set_hooks(path, prefix):
     """Replace Clawdmeter hook entries (ours or upstream's) in a settings.json; prefix None = remove only."""
     path = Path(os.path.realpath(path))  # a symlinked settings.json stays a symlink
     try:
-        d = json.loads(path.read_text(encoding="utf-8-sig") or "{}") if path.exists() else {}
+        text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
+        d = json.loads(text or "{}")
     except ValueError as e:
         raise SystemExit(f"{path} isn't valid JSON ({e}). Fix it and run this again; nothing was changed.")
     if not isinstance(d, dict) or not isinstance(d.get("hooks") or {}, dict):
         raise SystemExit(f"{path} has an unexpected shape (\"hooks\" should be an object); nothing was changed.")
-    bak = path.with_name(path.name + ".bak-clawdbridge")
-    if path.exists() and not bak.exists():
-        shutil.copy2(path, bak)
     hooks = d.get("hooks") or {}
     for ev in list(hooks):
         if not isinstance(hooks[ev], list):
@@ -742,14 +749,17 @@ def set_hooks(path, prefix):
             hooks[ev] = groups
         else:
             del hooks[ev]
-    if prefix:
-        for ev, matcher, args in HOOKS:
-            g = {"hooks": [{"type": "command", "command": f"{prefix} hook {args}"}]}
-            hooks.setdefault(ev, []).append({"matcher": matcher, **g} if matcher else g)
+    for ev, groups in (our_hooks(prefix) if prefix else {}).items():
+        hooks.setdefault(ev, []).extend(groups)
     if hooks:
         d["hooks"] = hooks
     else:
         d.pop("hooks", None)
+    if d == json.loads(text or "{}"):  # already right: a read-only (e.g. home-manager) file the user filled in
+        return
+    bak = path.with_name(path.name + ".bak-clawdbridge")
+    if path.exists() and not bak.exists():
+        shutil.copy2(path, bak)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
@@ -764,13 +774,44 @@ def spawn(cmd):
         subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=logf, stderr=logf, close_fds=True, **kw)
 
 
+CRON_TAG = "# clawdbridge"
+
+
+def set_cron(line):
+    """Put `@reboot <line>` in this user's crontab, or with None take it out. True if that worked."""
+    if not shutil.which("crontab"):
+        return False
+    r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    if r.returncode and not re.search(r"no f?crontab|no such file", r.stderr, re.I):
+        return False  # couldn't read it: writing would wipe whatever is there
+    old = r.stdout.splitlines()
+    new = [x for x in old if not x.endswith(CRON_TAG)] + ([f"@reboot {line} {CRON_TAG}"] if line else [])
+    return new == old or subprocess.run(["crontab", "-"], input="\n".join(new) + "\n", text=True,
+                                        capture_output=True).returncode == 0
+
+
+def cron_running():
+    for p in Path("/proc").glob("[0-9]*/comm"):  # crond, cron, cronie, fcron...
+        try:
+            if "cron" in p.read_text():
+                return True
+        except OSError:  # exited meanwhile
+            pass
+    return False
+
+
 def autostart_linux(on, cmd):
+    """A systemd user service; without one, an @reboot crontab line; else a desktop autostart entry."""
+    import pwd
     unit = HOME / ".config/systemd/user/clawdbridge.service"
     desktop = HOME / ".config/autostart/clawdbridge.desktop"
     sysd = shutil.which("systemctl") and subprocess.run(["systemctl", "--user", "show-environment"],
                                                         capture_output=True).returncode == 0
+    gui = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
     quoted = " ".join(f'"{c}"' for c in cmd)
     if sysd and on:
+        set_cron(None)  # left from an install without systemd
+        desktop.unlink(missing_ok=True)
         unit.parent.mkdir(parents=True, exist_ok=True)
         unit.write_text(f"""[Unit]
 Description=Clawdmeter bridge (Claude Code usage for the Clawdmeter phone app)
@@ -788,17 +829,35 @@ WantedBy=default.target
 """)
         for a in (["daemon-reload"], ["enable", unit.name], ["restart", unit.name]):
             subprocess.run(["systemctl", "--user", *a], check=False)
-        return "a systemd user service (clawdbridge)"
+        how = "starts at login as a systemd user service (clawdbridge), and is running now"
+        if not gui and not Path("/var/lib/systemd/linger", pwd.getpwuid(os.getuid()).pw_name).exists():
+            how += ("\n  - it stops when you log out, until your next login. To keep it running (headless), run once:"
+                    "\n      loginctl enable-linger")
+        return how
     if sysd:
         subprocess.run(["systemctl", "--user", "disable", "--now", unit.name], capture_output=True)
         unit.unlink(missing_ok=True)
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
-    if on:  # no systemd user session: desktop autostart
+    # no systemd user session (OpenRC, runit, sysvinit, containers...): cron works headless too
+    cron = on and cron_running() and set_cron(f'{quoted} >>"{STATE_DIR / "bridge.log"}" 2>&1')
+    if not cron:
+        set_cron(None)
+    if on and not cron:
         desktop.parent.mkdir(parents=True, exist_ok=True)
         desktop.write_text(f"[Desktop Entry]\nType=Application\nName=Clawdmeter bridge\nExec={quoted}\nTerminal=false\n")
-        spawn(cmd)
-        return "a desktop autostart entry"
-    desktop.unlink(missing_ok=True)
+    else:
+        desktop.unlink(missing_ok=True)
+    if not on:
+        return
+    spawn(cmd)
+    if cron:
+        return "starts at boot from your crontab (@reboot), and is running now"
+    if gui:
+        return ("starts at login from a desktop autostart entry, and is running now"
+                "\n    (GNOME, KDE, Xfce... run it; a bare window manager needs the command below in its own startup)"
+                f"\n    {quoted}")
+    return ("is running now, but nothing will start it after a reboot (no systemd user session, no cron daemon)."
+            f"\n    To fix that, have your init system or login script run: {quoted}")
 
 
 def autostart_mac(on, cmd):
@@ -822,7 +881,7 @@ def autostart_mac(on, cmd):
 </dict></plist>
 """)
     subprocess.run(["launchctl", "bootstrap", dom, str(plist)], check=False)
-    return "a LaunchAgent (com.clawdmeter.bridge)"
+    return "starts at login as a LaunchAgent (com.clawdmeter.bridge), and is running now"
 
 
 def autostart_windows(on, cmd):
@@ -838,7 +897,26 @@ def autostart_windows(on, cmd):
                 pass
     if on:
         spawn(cmd)
-        return "a sign-in entry (HKCU Run: Clawdbridge)"
+        return "starts at sign-in from HKCU Run (Clawdbridge), and is running now"
+
+
+def nat_note():
+    """Linux that sits behind NAT with no Bluetooth: the phone can't reach the bridge there as is."""
+    try:
+        wsl = "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower()
+    except OSError:
+        wsl = False
+    if wsl:
+        return """
+Note: this is WSL. The phone usually can't reach it: WSL 2 is behind NAT (no mDNS from outside) and has no
+Bluetooth. Mirrored networking may let the phone reach it by address: https://learn.microsoft.com/windows/wsl/networking
+The Windows installer doesn't help here: it reads Windows' .claude folder, not this one."""
+    if Path("/opt/google/cros-containers").exists():
+        return """
+Note: this is ChromeOS's Linux. The phone can't reach it as is: it's behind NAT and has no Bluetooth.
+Forward TCP 8787 (ChromeOS settings, Linux development environment, Port forwarding), then add the
+Chromebook's own address on the phone."""
+    return ""
 
 
 def install(on=True):
@@ -846,8 +924,17 @@ def install(on=True):
     py, script = Path(sys.executable), Path(__file__).resolve()
     bg = py.with_name("pythonw.exe") if WINDOWS and py.with_name("pythonw.exe").exists() else py
     settings = CLAUDE_DIR / "settings.json"
-    set_hooks(settings, f'"{py.as_posix()}" "{script.as_posix()}"' if on else None)
-    keep = {k: os.environ[k] for k in ("CLAUDE_CONFIG_DIR", "CLAWDMETER_STATE", "CLAWDBRIDGE_NAME") if os.environ.get(k)}
+    prefix = f'"{py.as_posix()}" "{script.as_posix()}"'
+    try:
+        set_hooks(settings, prefix if on else None)
+        hooks = (f"Claude Code hooks added to {settings} (backup: settings.json.bak-clawdbridge)" if on
+                 else f"hooks taken out of {settings}")
+    except OSError as e:  # e.g. home-manager's settings.json: a link into the read-only /nix/store
+        hooks = f"{settings} can't be written ({e.strerror or e}): "
+        hooks += ("add these to whatever manages it (home-manager...), then run this again:\n"
+                  + json.dumps({"hooks": our_hooks(prefix)}, indent=2) if on
+                  else "remove the clawdbridge.py hook entries from it yourself")
+    keep ={k: os.environ[k] for k in ("CLAUDE_CONFIG_DIR", "CLAWDMETER_STATE", "CLAWDBRIDGE_NAME") if os.environ.get(k)}
     if on and keep:  # a custom Claude dir etc. must reach the service and the hooks, not just this shell
         ENV_FILE.write_text(json.dumps(keep, indent=1), encoding="utf-8")
     else:
@@ -855,19 +942,19 @@ def install(on=True):
     quit_running()
     how = (autostart_windows if WINDOWS else autostart_mac if MAC else autostart_linux)(on, [str(bg), str(script), "serve"])
     if not on:
-        return print(f"Clawdmeter bridge removed: hooks taken out of {settings}, no longer starts at login.")
+        return print(f"Clawdmeter bridge removed: no longer starts at login; {hooks}.")
     try:
         ips = ", ".join(lan_ips())
     except ImportError:
         ips = "(see your network settings)"
     print(f"""
 Clawdmeter bridge installed for '{HOST}'.
-  - Claude Code hooks added to {settings} (backup: settings.json.bak-clawdbridge)
-  - starts at login as {how}, and is running now
+  - {hooks}
+  - {how}
 On the phone, open Clawdmeter and long-press the clock:
   Wi-Fi      this computer shows up by itself; or add one of: {ips} (port {PORT})
   Bluetooth  choose Bluetooth; this computer connects when it sees the phone
-Restart any open Claude Code sessions so they pick up the hooks.
+Restart any open Claude Code sessions so they pick up the hooks.{nat_note()}
 Uninstall: "{py}" "{script}" uninstall""")
 
 
@@ -942,7 +1029,9 @@ def selftest():
                             {"hooks": [{"type": "command", "command": "/opt/c/clawdmeter hook clear event"}]}],
             "Stop": [{"hooks": [other, {"type": "command", "command": '"C:/x/clawdmeter.exe" hook event'}]}]}}))
         set_hooks(s, '"/v/python" "/b/clawdbridge.py"')
-        set_hooks(s, '"/v/python" "/b/clawdbridge.py"')  # idempotent
+        ino = s.stat().st_ino
+        set_hooks(s, '"/v/python" "/b/clawdbridge.py"')  # idempotent, and not rewritten (read-only files filled in)
+        assert s.stat().st_ino == ino
         h = json.loads(s.read_text())["hooks"]
         cmds = [x["command"] for g in sum(h.values(), []) for x in g["hooks"]]
         assert cmds.count("prettier --write") == 2 and not any("clawdmeter" in c for c in cmds), cmds
@@ -1022,6 +1111,26 @@ def selftest():
         after = json.loads(s.read_text())
         assert after["model"] == "x" and after["hooks"] == {"PostToolUse": [{"matcher": "Edit", "hooks": [other]}],
                                                             "Stop": [{"hooks": [other]}]}, after
+    if not WINDOWS:  # crontab: ours added once, replaced, removed; the user's lines kept; unreadable = untouched
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "crontab").write_text(  # a fake crontab, so the real one is never touched
+                '#!/bin/sh\nf="$(dirname "$0")/tab"\n[ -n "$CRON_DENY" ] && { echo denied >&2; exit 1; }\n'
+                'case "$1" in -l) [ -f "$f" ] && exec cat "$f"; echo "no crontab for x" >&2; exit 1 ;;'
+                ' -) cat >"$f" ;; esac\n')
+            (Path(d) / "crontab").chmod(0o755)
+            tab, env = Path(d) / "tab", dict(os.environ)
+            os.environ["PATH"] = d + os.pathsep + env.get("PATH", "")
+            try:
+                assert set_cron("/b/run") and set_cron("/b/run")
+                tab.write_text("0 * * * * mine\n" + tab.read_text())
+                assert set_cron("/b/run2") and tab.read_text() == f"0 * * * * mine\n@reboot /b/run2 {CRON_TAG}\n"
+                os.environ["CRON_DENY"] = "1"
+                assert not set_cron(None) and CRON_TAG in tab.read_text()
+                del os.environ["CRON_DENY"]
+                assert set_cron(None) and tab.read_text() == "0 * * * * mine\n"
+            finally:
+                os.environ.clear()
+                os.environ.update(env)
     from types import SimpleNamespace as NS
     assert is_phone(NS(service_uuids=[SVC.upper()], manufacturer_data={}))
     assert is_phone(NS(service_uuids=["00001800-0000-1000-8000-00805f9b34fb"], manufacturer_data={0xFFFF: b"clwd"}))
