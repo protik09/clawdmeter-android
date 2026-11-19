@@ -3,14 +3,33 @@ plugins { id 'com.android.application' }
 android {
     namespace 'local.clawdmeter'
     compileSdk 36
+    buildFeatures { buildConfig true }
     defaultConfig {
         applicationId 'local.clawdmeter'
         minSdk 33
         targetSdk 36
-        // release CI passes these from the git tag (see .github/workflows/release.yml); local builds keep 1.0
+        // release CI passes these from the git tag (see .github/workflows/release.yml); local builds are "dev",
+        // which never self-update
         // `=` matters: `versionCode (x).toInteger()` parses as `versionCode(x).toInteger()`
         versionCode = (findProperty('appVersionCode') ?: '1').toInteger()
-        versionName = findProperty('appVersion') ?: '1.0'
+        versionName = findProperty('appVersion') ?: 'dev'
+        // Where the app looks for new releases. A test build can point it elsewhere: -PupdateFeed=http://...
+        def feed = findProperty('updateFeed') ?: 'https://api.github.com/repos/protik09/clawdmeter-android/releases/latest'
+        buildConfigField 'String', 'UPDATE_FEED', "\"${feed}\""
+    }
+    // One permanent key for every release. Android installs an update only when it's signed with the installed
+    // app's key, and a fresh CI runner would otherwise sign with a new throwaway debug key each time.
+    // Release CI sets these from repo secrets; local builds keep this machine's own debug key.
+    def keystore = System.getenv('CLAWDMETER_KEYSTORE')
+    if (keystore) {
+        signingConfigs {
+            debug {
+                storeFile file(keystore)
+                storePassword System.getenv('CLAWDMETER_KEYSTORE_PASSWORD')
+                keyAlias 'clawdmeter'
+                keyPassword System.getenv('CLAWDMETER_KEYSTORE_PASSWORD')
+            }
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

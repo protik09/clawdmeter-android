@@ -14,6 +14,21 @@ Download the latest files from the [Releases page](https://github.com/protik09/c
 | macOS | `clawdbridge-install-macos.command` | double-click (or `sh clawdbridge-install-macos.command`) |
 | Windows | `clawdbridge-install-windows.cmd` | double-click |
 
+### Updates
+
+The app updates itself: it checks the Releases page when it starts and once a day, and installs a new version
+without asking.
+
+- **First time:** ☰ → *Let Clawdmeter install its updates*. Android asks whether Clawdmeter may show
+  notifications, then opens its *Install unknown apps* switch for Clawdmeter. Until that switch is on, a dot on ☰
+  says an update is waiting.
+- **Installing closes the app for a moment.** As the Home app ([kiosk mode](#running-it-unattended)) Android
+  reopens it. Otherwise Android usually doesn't let it reopen itself: tap the *Clawdmeter updated* notification.
+- ☰ shows the version and the last check, and has *Check* (or *Update*) and an *Update automatically* switch.
+- **Coming from 0.4.0 or older:** uninstall the app once, then install the new APK. Each of those versions was
+  signed with a throwaway key, and Android only replaces an app with one signed by the same key. This resets the
+  app's settings.
+
 ## Links
 
 - **Platform notes:**
@@ -28,8 +43,8 @@ Download the latest files from the [Releases page](https://github.com/protik09/c
 ## Running it unattended
 
 - **Kiosk mode (recommended for a spare phone):** set Clawdmeter as the Home app (Settings → Apps → Default apps →
-  Home app). Android then relaunches it after a reboot, and after a WebView update, which closes every app that
-  uses WebView.
+  Home app). Android then relaunches it after a reboot, after it updates itself, and after a WebView update, which
+  closes every app that uses WebView.
 - **Self-recovery, without kiosk mode:**
   - A Bluetooth off/on restarts the phone's Bluetooth link.
   - A killed WebView renderer rebuilds the page.
@@ -52,7 +67,8 @@ Download the latest files from the [Releases page](https://github.com/protik09/c
 
 - Tap the clock: brightness (system → 50% → 20% → 5%).
 - Tap ☰ (top right), or long-press the clock: settings. They hold Wi-Fi/Bluetooth, the list of computers (add or
-  remove by address), the Bluetooth computer choice, a test alert, and how to install the bridge.
+  remove by address), the Bluetooth computer choice, a test alert, how to install the bridge, the app version and
+  [updates](#updates), and *About*.
 - No computer found for 10 seconds: Clawd's area shows *Install the bridge ›*. It opens a QR code and the address
   of the Releases page, to type on the computer.
 - Tap anywhere: dismiss an alert (the computer that raised it is told), or make Clawd hop.
@@ -70,6 +86,16 @@ export JAVA_HOME=~/.local/opt/jdk17 ANDROID_HOME=~/Android/Sdk
 (cd android && ~/.local/opt/gradle-8.14.3/bin/gradle assembleDebug)
 python3 bridge/build_installers.py               # dist/: the three installers + clawdmeter-protik09-dev.apk
 ```
+
+Signing: release CI signs every APK with one permanent key, from the repo secrets `CLAWDMETER_KEYSTORE_B64`
+(a base64 PKCS12 file, alias `clawdmeter`) and `CLAWDMETER_KEYSTORE_PASSWORD`. A tag build without them, or
+signed with any other certificate, fails. Back the key up: without it, installed apps can never update again.
+
+Local builds are version `dev`, which never self-updates, and are signed with your own debug key. To sign with the
+release key, set `CLAWDMETER_KEYSTORE` (path to the .p12) and `CLAWDMETER_KEYSTORE_PASSWORD`. To try an update
+without publishing one, build two versions against a local feed, e.g.
+`-PappVersion=0.4.1 -PappVersionCode=401 -PupdateFeed=http://127.0.0.1:8765/latest.json`. Then serve a copy of
+GitHub's `releases/latest` JSON there, pointing at the newer APK, and run `adb reverse tcp:8765 tcp:8765`.
 
 ## License
 

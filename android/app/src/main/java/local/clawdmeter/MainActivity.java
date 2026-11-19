@@ -91,6 +91,7 @@ public class MainActivity extends Activity {
     final ArrayDeque<NsdServiceInfo> toResolve = new ArrayDeque<>(); // UI thread only
     boolean resolving;
     final ExecutorService probe = Executors.newCachedThreadPool();
+    Updater upd;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -124,6 +125,7 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(true);
         s.setAllowFileAccessFromFileURLs(true); // fonts/sprites from file:///android_asset
         s.setMediaPlaybackRequiresUserGesture(false); // chimes without a tap
+        upd = new Updater(this); // before the page loads: it asks for the version straight away
         web.addJavascriptInterface(new Js(), "Android");
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -134,6 +136,13 @@ public class MainActivity extends Activity {
         });
         web.loadUrl("file:///android_asset/index.html");
         registerReceiver(btState, new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), Context.RECEIVER_NOT_EXPORTED);
+        upd.start();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        upd.onResume(); // maybe back from granting "Install unknown apps"
     }
 
     /** Bluetooth switched off/on (or its stack restarted): the GATT server dies with it, so follow the adapter. */
@@ -167,6 +176,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         unregisterReceiver(btState);
+        upd.stop();
         stopBle();
         stopDiscovery();
         probe.shutdownNow();
@@ -176,6 +186,7 @@ public class MainActivity extends Activity {
 
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        if (code == Updater.REQ_NOTIF) { upd.afterNotif(); return; } // granted or not, go on to the install permission
         for (int r : results) if (r != PackageManager.PERMISSION_GRANTED) { status("Bluetooth permission denied"); return; }
         if (wantBle) startBle();
     }
@@ -229,6 +240,22 @@ public class MainActivity extends Activity {
                 try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (ActivityNotFoundException ignored) { }
             });
         }
+
+        // ---- app updates (Updater): state goes back to the page through onUpdate ----
+        @JavascriptInterface
+        public String updateInfo() { return upd.info(); }
+
+        @JavascriptInterface
+        public void setAutoUpdate(boolean on) { runOnUiThread(() -> upd.setAuto(on)); }
+
+        @JavascriptInterface
+        public void checkUpdate() { runOnUiThread(upd::check); }
+
+        @JavascriptInterface
+        public void installUpdate() { runOnUiThread(upd::installNow); }
+
+        @JavascriptInterface
+        public void allowUpdates() { runOnUiThread(upd::allow); }
 
         /** 0..1, or -1 for the system brightness. */
         @JavascriptInterface

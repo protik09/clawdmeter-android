@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+      # SHA-256 of the permanent signing certificate (public). Installed apps update themselves only to an APK
+      # signed with it, so a release signed with anything else is refused below.
+      RELEASE_CERT_SHA256: 04b97d168a28f2812d9a738faa51a7287d450caa973ab475310b8def93ca1330
     steps:
       - name: Check tag is semver
         if: env.IS_TAG == 'true'
@@ -58,11 +61,34 @@ jobs:
         with:
           gradle-version: 8.14.3
 
-      # ponytail: debug-signed APK (same as dist/ today). Add a release keystore via repo secrets when real signing matters.
+      # The permanent signing key, from repo secrets (CLAWDMETER_KEYSTORE_B64: base64 PKCS12, alias "clawdmeter").
+      # Without it (a fork) main still builds, with a throwaway key; a tag fails instead of publishing an APK
+      # that no installed app can update to.
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.CLAWDMETER_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            if [ "$IS_TAG" = true ]; then echo "CLAWDMETER_KEYSTORE_B64 secret missing: not releasing"; exit 1; fi
+            echo "No signing key: building with a throwaway debug key"; exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/clawdmeter.p12"
+          echo "CLAWDMETER_KEYSTORE=$RUNNER_TEMP/clawdmeter.p12" >> "$GITHUB_ENV"
+
+      # The debug build type, signed with the permanent key (build.gradle swaps it in when CLAWDMETER_KEYSTORE is set).
       # On main, VERSION is unset, so the empty -P values fall back to build.gradle's defaults.
       - name: Build debug APK
         working-directory: android
+        env:
+          CLAWDMETER_KEYSTORE_PASSWORD: ${{ secrets.CLAWDMETER_KEYSTORE_PASSWORD }}
         run: gradle :app:assembleDebug --build-cache -PappVersion=$VERSION -PappVersionCode=$VERSION_CODE
+
+      - name: Check the APK is signed with the release key
+        if: env.IS_TAG == 'true'
+        run: |
+          "$ANDROID_HOME"/build-tools/36.0.0/apksigner verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk \
+            | grep -q "certificate SHA-256 digest: $RELEASE_CERT_SHA256" \
+            || { echo "APK is not signed with the release key ($RELEASE_CERT_SHA256)"; exit 1; }
 
       - name: Check APK and bridge versions match the tag
         if: env.IS_TAG == 'true'
@@ -80,8 +106,10 @@ jobs:
         if: env.IS_TAG == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+        # 1.2.3-rc.1 is a pre-release: the app's update check (releases/latest) skips it
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          pre=; case "$VERSION" in *-*) pre=--prerelease ;; esac
+          gh release create "$GITHUB_REF_NAME" $pre \
             --title "Clawdmeter $VERSION" \
             --generate-notes \
             dist/clawdmeter-protik09-$VERSION.apk \
