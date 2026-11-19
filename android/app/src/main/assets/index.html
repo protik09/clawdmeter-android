@@ -11,10 +11,13 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;overflow:hidden}
 #app{height:100%;display:flex;flex-direction:column;gap:calc(3*var(--u));padding:calc(3*var(--u)) calc(4*var(--u))}
-header{display:flex;align-items:center;justify-content:center;position:relative}
+header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center} /* dot | clock | menu: the clock stays centred */
 #clock{font-family:Georgia,serif;font-size:calc(17*var(--u));line-height:1.1}
-#dot{position:absolute;right:calc(2*var(--u));width:calc(2.6*var(--u));height:calc(2.6*var(--u));border-radius:50%;background:#444;transition:background .4s}
+#dot{justify-self:start;margin-left:calc(2*var(--u));width:calc(2.6*var(--u));height:calc(2.6*var(--u));border-radius:50%;background:#444;transition:background .4s}
 #dot.on{background:var(--green)}
+#menu{justify-self:end;margin-right:calc(-3*var(--u));width:calc(11*var(--u));height:calc(11*var(--u));min-width:40px;min-height:40px;padding:0;border:0;border-radius:50%;background:none;color:var(--dim);opacity:.6;display:flex;align-items:center;justify-content:center}
+#menu:active{background:#8883}
+#menu svg{width:55%;height:55%;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
 #cards{display:flex;flex-direction:column;gap:calc(3*var(--u));transition:opacity .6s}
 #cards.stale{opacity:.4}
 .card{background:var(--panel);border-radius:calc(3.5*var(--u));padding:calc(3.5*var(--u)) calc(4.5*var(--u))}
@@ -33,6 +36,8 @@ header{display:flex;align-items:center;justify-content:center;position:relative}
 #who .proj{font-family:Georgia,serif;font-size:calc(8*var(--u));line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #who.multi .proj{font-size:calc(6.5*var(--u));margin-bottom:calc(2*var(--u))}
 #who .proj.idle{color:var(--dim)}
+#who .nudge{pointer-events:auto;background:none;border:0;color:inherit;font:inherit;padding:calc(2*var(--u)) calc(4*var(--u))}
+#who .nudge .go{display:block;color:var(--accent);font-size:calc(6.5*var(--u));margin-top:calc(1*var(--u))}
 footer{font-family:Mono,monospace;color:var(--accent);font-size:calc(6.6*var(--u));text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.3em}
 #app.alerting footer{animation:pulse .8s infinite alternate}
 #app.alerting #stage{animation:glow 1.6s infinite alternate}
@@ -47,12 +52,13 @@ footer{font-family:Mono,monospace;color:var(--accent);font-size:calc(6.6*var(--u
 #face{position:fixed;inset:0;transform:translateY(105%);transition:transform .51s cubic-bezier(.55,-0.35,.9,.6);z-index:5}
 #face.up{transform:none;transition:transform .86s cubic-bezier(.2,1.35,.45,1)}
 #face canvas{width:100%;height:100%;display:block}
-#settings{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:10;padding:5vw}
-#settings.open{display:flex}
-#settings .box{max-height:94vh;overflow-y:auto;background:var(--panel);color:var(--text);border-radius:16px;padding:22px;width:min(92vw,460px);font-size:16px;display:flex;flex-direction:column;gap:14px}
-#settings h2{font-weight:400;font-size:22px}
-#settings label{color:var(--dim);font-size:14px}
-#settings input{width:100%;padding:10px;border-radius:8px;border:1px solid #8886;background:var(--bg);color:var(--text);caret-color:var(--accent);font:inherit;user-select:text}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:10;padding:5vw}
+.sheet.open{display:flex}
+#install{z-index:11} /* opens over the settings; Done goes back to them */
+.sheet .box{max-height:94vh;overflow-y:auto;background:var(--panel);color:var(--text);border-radius:16px;padding:22px;width:min(92vw,460px);font-size:16px;display:flex;flex-direction:column;gap:14px}
+.sheet h2{font-weight:400;font-size:22px}
+.sheet label{color:var(--dim);font-size:14px}
+.sheet input{width:100%;padding:10px;border-radius:8px;border:1px solid #8886;background:var(--bg);color:var(--text);caret-color:var(--accent);font:inherit;user-select:text}
 .seg{display:flex;gap:8px}
 .seg button,.btns button{flex:1;padding:11px;border-radius:10px;border:1px solid #8886;background:var(--bg);color:var(--text);font:inherit}
 .seg button.sel{background:var(--accent);border-color:var(--accent);color:#000}
@@ -67,11 +73,14 @@ footer{font-family:Mono,monospace;color:var(--accent);font-size:calc(6.6*var(--u
 .addrow{display:flex;gap:8px}.addrow input{flex:1}.addrow button{flex:none;padding:0 16px;border-radius:10px;border:1px solid #8886;background:var(--bg);color:var(--text);font:inherit}
 #dlist button{text-align:left;padding:11px 14px;border-radius:10px;border:1px solid #8886;background:var(--bg);color:var(--text);font:inherit}#dlist button.sel{background:var(--accent);border-color:var(--accent);color:#000}
 #blelabel.ask{color:var(--accent);font-size:15px}
+.linkbtn{align-self:flex-start;padding:4px 0;border:0;background:none;color:var(--accent);font:inherit;font-size:15px;text-align:left}
+#qr{align-self:center;width:min(50vw,28vh,220px);aspect-ratio:1;border-radius:10px;background:#fff}
+#relurl{font-family:Mono,monospace;font-size:13px;overflow-wrap:anywhere;text-align:center;user-select:text}
 </style>
 </head>
 <body>
 <div id="app">
-  <header><span id="clock">--:--</span><span id="dot"></span></header>
+  <header><span id="dot"></span><span id="clock">--:--</span><button id="menu" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></header>
   <div id="cards" class="stale">
     <div class="card" id="c0"><div class="row"><span class="pct">--%</span><span class="pill">Session</span></div>
       <div class="bar"><div class="fill"></div><div class="tick"></div></div><div class="sub">No data</div></div>
@@ -82,7 +91,7 @@ footer{font-family:Mono,monospace;color:var(--accent);font-size:calc(6.6*var(--u
   <footer id="status">✻ Waiting…</footer>
 </div>
 <div id="face"><canvas id="fcv"></canvas></div>
-<div id="settings"><div class="box">
+<div id="settings" class="sheet"><div class="box">
   <h2>Clawdmeter</h2>
   <div><label>Data from</label><div class="seg"><button data-m="wifi">Wi-Fi</button><button data-m="ble">Bluetooth</button></div></div>
   <div id="wifiopts">
@@ -94,8 +103,17 @@ footer{font-family:Mono,monospace;color:var(--accent);font-size:calc(6.6*var(--u
     <label id="blelabel">Bluetooth</label>
     <div id="dlist" class="list"></div>
   </div>
+  <button id="getbridge" class="linkbtn">Install the bridge on a computer &rsaquo;</button>
   <div class="btns"><button id="test">Test alert</button><button id="close">Done</button></div>
-  <div id="hint">Tap the clock to change brightness. Long-press the clock for these settings.</div>
+  <div id="hint">Tap the clock to change brightness.</div>
+</div></div>
+<div id="install" class="sheet"><div class="box">
+  <h2>Install the bridge</h2>
+  <div class="note">Clawdmeter needs a small bridge program on each computer that runs Claude Code. On that computer, open this page and run the installer for its system.</div>
+  <img id="qr" src="bridge-qr.svg" alt="QR code for the download page">
+  <div id="relurl"></div>
+  <div class="note">Scan the code with another device, or type the address. Once the bridge runs, this phone finds the computer on the same Wi-Fi by itself.</div>
+  <div class="btns"><button id="iopen">Open link</button><button id="iclose">Done</button></div>
 </div></div>
 <script src="clawd/manifest.js"></script>
 <script>
@@ -126,7 +144,7 @@ let mode = LS.get('mode', 'wifi');
 let manual = LS.get('manual', null) || (LS.get('bridge', null) ? [LS.get('bridge', null)] : location.protocol.startsWith('http') ? [location.origin] : []);
 let found = [];                                     // [{name, url}] bridges found on the LAN (Android NSD)
 let bleDevs = [], bleText = '', blePick = LS.get('blePick', ''), lastBle = {};
-let linkSince = 0, wasUp = false, lastEventAt = now(), turnStart = 0, alert = null;
+let linkSince = 0, downSince = now(), wasUp = false, lastEventAt = now(), turnStart = 0, alert = null;
 
 function applyTheme(th) {
   if (!/^[0-9a-fA-F]{66}$/.test(th || '')) return;
@@ -311,21 +329,27 @@ function render() {
   card($('#c1'), s, p.w | 0, s && s.wAt, 10080, 'Weekly');
   $('#cards').classList.toggle('stale', isStale());
   if (up && !wasUp) linkSince = now();
+  if (up) downSince = 0; else if (!downSince) downSince = now();
   wasUp = up; $('#dot').classList.toggle('on', up);
   renderWho();
 }
 function div(cls, text) { const e = document.createElement('div'); e.className = cls; e.textContent = text; return e; }
 let whoKey = '';
+const nudge = el('button', 'nudge'); // no computer for a while: point at the bridge installer
+nudge.append(el('span', 'dev', 'No computer found'), el('span', 'go', 'Install the bridge ›'));
+nudge.addEventListener('click', e => { e.stopPropagation(); openInstall(); });
 function renderWho() { // which computer(s) and project(s) Claude Code is working on
   const rows = sources().sort((a, b) => (b.p.n | 0) - (a.p.n | 0)).slice(0, 3).map(s => {
     const n = s.p.n | 0, pj = Array.isArray(s.p.pj) ? s.p.pj.map(String) : [];
     return [[label(s), n ? `${n} session${n > 1 ? 's' : ''} active` : 'idle'].join(' · '), pj.join(' · '), n];
   });
-  const key = JSON.stringify(rows);
+  const lost = !rows.length && downSince > 0 && now() - downSince > 10000;
+  const key = JSON.stringify(rows) + lost;
   if (key === whoKey) return;
   whoKey = key;
   const who = $('#who');
   who.classList.toggle('multi', rows.length > 1);
+  if (lost) return who.replaceChildren(nudge);
   who.replaceChildren(...rows.flatMap(([dev, pj, n]) => [div('dev', dev), div('proj' + (n ? '' : ' idle'), pj)]));
 }
 
@@ -641,6 +665,7 @@ $('#app').addEventListener('click', () => {
   run(async live => { await home(live); await play('jumping', { from: 1 }); });
 });
 $('#face').addEventListener('click', () => { lastEventAt = now(); faceDrop(); });
+$('#menu').addEventListener('click', e => { e.stopPropagation(); openSettings(); });
 function settingsOpen() { return $('#settings').classList.contains('open'); }
 function openSettings() { renderSettings(); $('#settings').classList.add('open'); }
 function el(tag, cls, text) { const e = document.createElement(tag); e.className = cls; if (text) e.textContent = text; return e; }
@@ -689,6 +714,17 @@ $('#close').addEventListener('click', () => {
   $('#settings').classList.remove('open'); LS.set('setup', true);
 });
 $('#test').addEventListener('click', () => { $('#settings').classList.remove('open'); startAlert('Clawdmeter test alert', true, 'test', 30000, null); });
+
+// ---- installing the bridge: the Releases page (bridge-qr.svg encodes this same URL) -----------
+const RELEASES = 'https://github.com/protik09/clawdmeter-android/releases/latest';
+$('#relurl').replaceChildren(...RELEASES.replace(/^https:\/\//, '').split('/') // wrap only after a slash
+  .flatMap((p, i, a) => i < a.length - 1 ? [p + '/', document.createElement('wbr')] : [p]));
+function openInstall() { $('#install').classList.add('open'); }
+function closeInstall() { $('#install').classList.remove('open'); }
+$('#getbridge').addEventListener('click', openInstall);
+$('#iclose').addEventListener('click', closeInstall);
+$('#install').addEventListener('click', e => { if (e.target === e.currentTarget) closeInstall(); }); // tap outside
+$('#iopen').addEventListener('click', () => { if (AND) AND.openUrl(RELEASES); else window.open(RELEASES, '_blank', 'noopener'); });
 
 // ---- main loop ----------------------------------------------------------------------------
 addEventListener('resize', fit);

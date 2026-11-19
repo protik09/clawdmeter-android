@@ -16,12 +16,14 @@ import android.bluetooth.le.AdvertiseCallback;
 import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertiseSettings;
 import android.bluetooth.le.BluetoothLeAdvertiser;
+import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Insets;
+import android.net.Uri;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.os.Build;
@@ -216,6 +218,16 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void setBg(String hex) {
             runOnUiThread(() -> { try { root.setBackgroundColor(android.graphics.Color.parseColor(hex)); } catch (IllegalArgumentException ignored) { } });
+        }
+
+        /** Open a web page (the bridge's download page) in the phone's browser. https only. */
+        @JavascriptInterface
+        public void openUrl(String url) {
+            Uri u = Uri.parse(url);
+            if (!"https".equals(u.getScheme())) return;
+            runOnUiThread(() -> {
+                try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (ActivityNotFoundException ignored) { }
+            });
         }
 
         /** 0..1, or -1 for the system brightness. */

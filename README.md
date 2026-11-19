@@ -51,8 +51,10 @@ Download the latest files from the [Releases page](https://github.com/protik09/c
 ## Phone controls
 
 - Tap the clock: brightness (system → 50% → 20% → 5%).
-- Long-press the clock: Wi-Fi/Bluetooth, the list of computers (add or remove by address), the Bluetooth computer
-  choice, and a test alert.
+- Tap ☰ (top right), or long-press the clock: settings. They hold Wi-Fi/Bluetooth, the list of computers (add or
+  remove by address), the Bluetooth computer choice, a test alert, and how to install the bridge.
+- No computer found for 10 seconds: Clawd's area shows *Install the bridge ›*. It opens a QR code and the address
+  of the Releases page, to type on the computer.
 - Tap anywhere: dismiss an alert (the computer that raised it is told), or make Clawd hop.
 - Status line (bottom):
   - While any session is working (a prompt or tool ran and it hasn't stopped), a spinner and Claude's verbs.
