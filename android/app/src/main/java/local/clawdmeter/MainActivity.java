@@ -282,6 +282,10 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void installUpdate() { runOnUiThread(upd::installNow); }
 
+        /** Dev builds only: replace this build with the latest published release. */
+        @JavascriptInterface
+        public void switchToRelease() { runOnUiThread(upd::switchToRelease); }
+
         @JavascriptInterface
         public void allowUpdates() { runOnUiThread(upd::allow); }
 

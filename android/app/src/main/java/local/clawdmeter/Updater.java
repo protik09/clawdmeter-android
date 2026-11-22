@@ -121,6 +121,19 @@ final class Updater {
         if (canInstall()) install(); else allow();
     }
 
+    /**
+     * "Switch to release" in a dev build's menu: install the latest published release over this build. Dev builds
+     * never update by themselves; this is the one manual way out. A release is signed with the permanent release key,
+     * so over a dev build signed with a local debug key Android refuses (onResult explains: uninstall first).
+     */
+    void switchToRelease() {
+        if (!dev || busy()) return;
+        wantInstall = true;
+        latest = null;
+        prefs.edit().remove("failed").remove("failedWhy").apply();
+        check();
+    }
+
     /** Ask for the notification permission (once), then send the user to "Install unknown apps" for this app. */
     void allow() {
         if (askNotif()) {
@@ -140,7 +153,7 @@ final class Updater {
 
     /** Back from the system settings: if that granted the install permission, go on with a waiting update. */
     void onResume() {
-        if (dev || closed) return;
+        if (closed || (dev && !wantInstall)) return;
         if (status.equals("available") && canInstall() && (wantInstall || (auto() && error == null))) install();
         else push();
     }
@@ -149,7 +162,7 @@ final class Updater {
 
     /** Ask GitHub for the latest release (drafts and pre-releases excluded); install it when newer and wanted. */
     void check() {
-        if (dev || busy()) return;
+        if ((dev && !wantInstall) || busy()) return; // a dev build checks only for switchToRelease()
         status = "checking";
         error = null;
         push();
@@ -213,7 +226,12 @@ final class Updater {
 
     void install() {
         if (latest == null || busy() || closed) return;
-        if (!canInstall()) { status = "available"; push(); return; } // the menu asks for the permission
+        if (!canInstall()) { // the menu asks for the permission; a switch from a dev build asks right away
+            status = "available";
+            push();
+            if (dev) allow();
+            return;
+        }
         status = "downloading";
         pct = 0;
         error = null;
@@ -278,7 +296,7 @@ final class Updater {
         if (st == PackageInstaller.STATUS_PENDING_USER_ACTION) { status = "confirm"; push(); return; } // Android's dialog is up
         failed(latest, st == PackageInstaller.STATUS_FAILURE_ABORTED ? "Install cancelled"
                 // the usual reason: this copy and the release are signed with different keys
-                : st == PackageInstaller.STATUS_FAILURE_CONFLICT ? latest + " can't replace this copy (different signing key): install it from the Releases page"
+                : st == PackageInstaller.STATUS_FAILURE_CONFLICT ? latest + " can't replace this copy (different signing key): uninstall this app, then install it from the Releases page"
                 : st == PackageInstaller.STATUS_FAILURE_STORAGE ? "Install failed: not enough storage"
                 : "Install failed" + (msg == null ? "" : " (" + msg + ")"));
     }

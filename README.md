@@ -90,8 +90,10 @@ python3 bridge/build_installers.py               # dist/: the three installers +
 Signing: release CI signs every APK with one permanent key, from the repo secrets `CLAWDMETER_KEYSTORE_B64`
 (a base64 PKCS12 file, alias `clawdmeter`) and `CLAWDMETER_KEYSTORE_PASSWORD`.
 
-Local builds are version `dev`, which never self-updates, and are signed with your own debug key. To sign with the
-release key, set `CLAWDMETER_KEYSTORE` (path to the .p12) and `CLAWDMETER_KEYSTORE_PASSWORD`. To try an update
+Local builds are version `dev`, which never self-updates automatically; its menu has a **Switch to release** button
+that installs the latest published release. If `~/.clawdmeter-signing/clawdmeter.p12` and `password.txt` exist, local
+builds are signed with the release key (so they install over a release, and the button works); otherwise with your
+own debug key. `CLAWDMETER_KEYSTORE` and `CLAWDMETER_KEYSTORE_PASSWORD` override those paths. To try an update
 without publishing one, build two versions against a local feed, e.g.
 `-PappVersion=0.4.1 -PappVersionCode=401 -PupdateFeed=http://127.0.0.1:8765/latest.json`. Then serve a copy of
 GitHub's `releases/latest` JSON there, pointing at the newer APK, and run `adb reverse tcp:8765 tcp:8765`.

@@ -19,15 +19,18 @@ android {
     }
     // One permanent key for every release. Android installs an update only when it's signed with the installed
     // app's key, and a fresh CI runner would otherwise sign with a new throwaway debug key each time.
-    // Release CI sets these from repo secrets; local builds keep this machine's own debug key.
-    def keystore = System.getenv('CLAWDMETER_KEYSTORE')
-    if (keystore) {
+    // Release CI sets these from repo secrets. Local builds use the same key from ~/.clawdmeter-signing (so a dev
+    // build installs over a release and back); without that folder they fall back to this machine's debug key.
+    def keyDir = new File(System.getProperty('user.home'), '.clawdmeter-signing')
+    def keystore = System.getenv('CLAWDMETER_KEYSTORE') ?: (new File(keyDir, 'clawdmeter.p12').exists() ? new File(keyDir, 'clawdmeter.p12').path : null)
+    def storePass = System.getenv('CLAWDMETER_KEYSTORE_PASSWORD') ?: (new File(keyDir, 'password.txt').exists() ? new File(keyDir, 'password.txt').text.trim() : null)
+    if (keystore && storePass) {
         signingConfigs {
             debug {
                 storeFile file(keystore)
-                storePassword System.getenv('CLAWDMETER_KEYSTORE_PASSWORD')
+                storePassword storePass
                 keyAlias 'clawdmeter'
-                keyPassword System.getenv('CLAWDMETER_KEYSTORE_PASSWORD')
+                keyPassword storePass
             }
         }
     }

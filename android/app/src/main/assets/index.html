@@ -801,7 +801,7 @@ function ago(t) {
   return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago';
 }
 function updText(u) {
-  if (u.dev) return 'Development build: no updates';
+  if (u.dev && u.status === 'idle' && !u.error) return 'Development build: no updates';
   if (u.status === 'checking') return 'Checking…';
   if (u.status === 'downloading') return `Downloading ${u.latest}… ${u.pct}%`;
   if (u.status === 'installing') return `Installing ${u.latest}…`;
@@ -817,9 +817,10 @@ function renderUpdate() {
   setText($('#uver'), u ? u.version : 'web');
   setText($('#ustat'), u ? updText(u) : 'Updates need the Android app');
   const b = $('#ucheck');
-  setStyle(b, 'display', on ? '' : 'none');
-  b.disabled = !on || !['idle', 'available'].includes(u.status);
-  setText(b, on && u.status === 'available' ? 'Update' : 'Check');
+  // a dev build never updates by itself; its one button replaces it with the latest published release
+  setStyle(b, 'display', u ? '' : 'none');
+  b.disabled = !u || !['idle', 'available'].includes(u.status);
+  setText(b, u && u.dev ? 'Switch to release' : u && u.status === 'available' ? 'Update' : 'Check');
   setStyle($('#uautorow'), 'display', on ? '' : 'none');
   $('#uauto').checked = on && u.auto;
   // Silent installs need "Install unknown apps" for this app; the notification permission is asked for with it.
@@ -828,7 +829,7 @@ function renderUpdate() {
     : on && u.auto && u.askNotif ? 'Let Clawdmeter notify you after an update ›' : '');
   setStyle(allow, 'display', allow.textContent ? '' : 'none');
 }
-$('#ucheck').addEventListener('click', () => { if (upd) upd.status === 'available' ? AND.installUpdate() : AND.checkUpdate(); });
+$('#ucheck').addEventListener('click', () => { if (upd && upd.dev) AND.switchToRelease(); else if (upd) upd.status === 'available' ? AND.installUpdate() : AND.checkUpdate(); });
 $('#uauto').addEventListener('change', e => { if (upd) { upd.auto = e.target.checked; AND.setAutoUpdate(upd.auto); } });
 $('#uallow').addEventListener('click', () => { if (AND) AND.allowUpdates(); });
 
