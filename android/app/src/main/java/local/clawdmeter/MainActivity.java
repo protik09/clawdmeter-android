@@ -21,6 +21,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Insets;
 import android.net.Uri;
@@ -92,14 +93,16 @@ public class MainActivity extends Activity {
     boolean resolving;
     final ExecutorService probe = Executors.newCachedThreadPool();
     Updater upd;
+    SharedPreferences prefs;
+    boolean shown; // between onStart and onStop. Hidden, Android 15+ blocks this app's network (APP_BACKGROUND).
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Window w = getWindow();
         w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); // the whole point: never sleep while shown
-        setShowWhenLocked(true); // desk display: after a power-button press, wake straight back to the meters
-        setTurnScreenOn(true);
+        prefs = getSharedPreferences("settings", MODE_PRIVATE);
+        showOverLock(prefs.getBoolean("lockscreen", false)); // before the window draws; opt-in, see showOverLock
         w.setDecorFitsSystemWindows(false);
         WindowManager.LayoutParams lp = w.getAttributes(); // same edge-to-edge on 13 as on 15+, which enforce it
         lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
@@ -143,6 +146,28 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         upd.onResume(); // maybe back from granting "Install unknown apps"
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        shown = true;
+        refreshDiscovery();
+    }
+
+    @Override
+    protected void onStop() {
+        shown = false;
+        super.onStop();
+    }
+
+    /**
+     * Desk display: after a power-button press, wake straight back to the meters instead of the lock screen.
+     * Off unless the user turns it on: shown over the keyguard, anyone can see the meters and open the settings.
+     */
+    void showOverLock(boolean on) {
+        setShowWhenLocked(on);
+        setTurnScreenOn(on);
     }
 
     /** Bluetooth switched off/on (or its stack restarted): the GATT server dies with it, so follow the adapter. */
@@ -200,10 +225,13 @@ public class MainActivity extends Activity {
             });
         }
 
-        /** A found computer stopped answering: it may have a new address, so look again. */
+        /**
+         * A found computer stopped answering: it may have a new address, so look again. Not while hidden: there every
+         * computer stops answering (no network), and starting over would forget them all; onStart looks again instead.
+         */
         @JavascriptInterface
         public void rediscover() {
-            runOnUiThread(() -> { if (disc != null) { stopDiscovery(); startDiscovery(); } });
+            runOnUiThread(() -> { if (shown && disc != null) { stopDiscovery(); startDiscovery(); } });
         }
 
         /** The phone's own 12/24-hour setting (the page only sees the locale). */
@@ -256,6 +284,15 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void allowUpdates() { runOnUiThread(upd::allow); }
+
+        /** Show over the lock screen (off by default). Kept natively so it applies before the page loads. */
+        @JavascriptInterface
+        public boolean lockscreen() { return prefs.getBoolean("lockscreen", false); }
+
+        @JavascriptInterface
+        public void setLockscreen(boolean on) {
+            runOnUiThread(() -> { prefs.edit().putBoolean("lockscreen", on).apply(); showOverLock(on); });
+        }
 
         /** 0..1, or -1 for the system brightness. */
         @JavascriptInterface
@@ -427,6 +464,19 @@ public class MainActivity extends Activity {
             @Override public void onStopDiscoveryFailed(String type, int err) { }
         };
         nsd.discoverServices("_clawdmeter._tcp", NsdManager.PROTOCOL_DNS_SD, disc);
+    }
+
+    /**
+     * Back in front: look again, keeping the computers already found. While hidden, reach() failed for any computer
+     * found meanwhile (no network), and NSD reports a cached service only once, to the listener that asked first;
+     * a new listener gets every cached one again, to probe now that the network is back.
+     */
+    void refreshDiscovery() {
+        if (disc == null) return;
+        try { nsd.stopServiceDiscovery(disc); } catch (IllegalArgumentException ignored) { }
+        disc = null;
+        toResolve.clear();
+        startDiscovery();
     }
 
     void stopDiscovery() {

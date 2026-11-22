@@ -1,7 +1,7 @@
 # Clawdmeter on Android
 
 A phone version of [Clawdmeter](https://github.com/HermannBjorgvin/Clawdmeter): Claude Code session/weekly usage,
-the computers and projects Claude is working on. It also shows over the lock screen.
+the computers and projects Claude is working on. It can also show over the lock screen (off by default).
 
 ## Install
 
@@ -45,10 +45,10 @@ without asking.
 - **Kiosk mode (recommended for a spare phone):** set Clawdmeter as the Home app (Settings → Apps → Default apps →
   Home app). Android then relaunches it after a reboot, after it updates itself, and after a WebView update, which
   closes every app that uses WebView.
-- **Self-recovery, without kiosk mode:**
-  - A Bluetooth off/on restarts the phone's Bluetooth link.
-  - A killed WebView renderer rebuilds the page.
-  - A computer whose address changed is found again.
+- **Lock screen:** ☰ → *Show over the lock screen* makes the power button wake the phone straight to the meters,
+  and keeps them up after a reboot, without unlocking. It's off by default: anyone who picks up the phone can then
+  see the meters and open the settings. Up to 0.5.0 the app always showed over the lock screen; after updating,
+  turn the switch on to keep that.
 - **Power:** the screen redraws only when something changes and runs at 60 Hz. When idle, the app uses about 2–4%
   of a CPU core.
 - **Burn-in:** the layout shifts a few pixels every minute.
@@ -66,9 +66,9 @@ without asking.
 ## Phone controls
 
 - Tap the clock: brightness (system → 50% → 20% → 5%).
-- Tap ☰ (top right), or long-press the clock: settings. They hold Wi-Fi/Bluetooth, the list of computers (add or
-  remove by address), the Bluetooth computer choice, a test alert, how to install the bridge, the app version and
-  [updates](#updates), and *About*.
+- Tap ☰ (top right), or long-press the clock: settings. They hold the *Interface* (Wi-Fi or Bluetooth), the list
+  of computers (add or remove by address), the Bluetooth computer choice, a test alert, how to install the bridge,
+  [*Show over the lock screen*](#running-it-unattended), the app version and [updates](#updates), and *About*.
 - No computer found for 10 seconds: Clawd's area shows *Install the bridge ›*. It opens a QR code and the address
   of the Releases page, to type on the computer.
 - Tap anywhere: dismiss an alert (the computer that raised it is told), or make Clawd hop.
@@ -88,8 +88,7 @@ python3 bridge/build_installers.py               # dist/: the three installers +
 ```
 
 Signing: release CI signs every APK with one permanent key, from the repo secrets `CLAWDMETER_KEYSTORE_B64`
-(a base64 PKCS12 file, alias `clawdmeter`) and `CLAWDMETER_KEYSTORE_PASSWORD`. A tag build without them, or
-signed with any other certificate, fails. Back the key up: without it, installed apps can never update again.
+(a base64 PKCS12 file, alias `clawdmeter`) and `CLAWDMETER_KEYSTORE_PASSWORD`.
 
 Local builds are version `dev`, which never self-updates, and are signed with your own debug key. To sign with the
 release key, set `CLAWDMETER_KEYSTORE` (path to the .p12) and `CLAWDMETER_KEYSTORE_PASSWORD`. To try an update
